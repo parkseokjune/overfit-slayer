@@ -1,0 +1,14 @@
+# 비밀키 — 절대 커밋 금지
+.env
+
+# 환경/캐시
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+logs/
+
+# 데이터/운용 기록 (클론 후 자동 재생성됨)
+data/
+results/
+.claude/

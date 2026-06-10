@@ -1,0 +1,115 @@
+# LOG.md — 이터레이션 기록 (최신이 위)
+
+## [2026-06-11 05:50] Iteration 16 — 윈도우 24h 운영 체제 구축 + 데모 트레이딩 전환
+- runner.py: 무인 러너 (1h 사이클 + 일요일 자동 재검증 + 크래시 내성 + logs/runner.log)
+- src/revalidate.py: 주간 walk-forward 건강도 추적 → revalidation.csv, 열화 시 ALERT.txt
+- DEPLOY_WINDOWS.md: 이전/설치/키발급/작업스케줄러/모니터링/학습규칙 전체 가이드
+- **발견: 바이낸스 구 선물 테스트넷 폐쇄** (ccxt NotSupported) → enable_demo_trading(True)로 전환
+- 사용자 키 입력됐으나 -2015 인증 실패 = 구 테스트넷 키 → **데모 트레이딩 키 재발급 필요** (가이드 갱신)
+- .env 변경 감시 Monitor 가동. pytest 48 passed, 러너 1회 검증 통과 (사이클 10)
+
+## [2026-06-11 05:00] Iteration 15 — 실거래(테스트넷) 테스트 준비 완료
+- execute_testnet 버그 수정: 선물 unified 심볼(BTC/USDT:USDT) 매핑, set_leverage 인자,
+  최소 명목가 $100, amount_to_precision, 북별 델타 주문, 체결가 기록
+- src/check_testnet.py 신설 — 주문 없이 키/잔고/심볼/레버리지/가격 점검
+- .env 템플릿 생성. pytest 48 passed, 페이퍼 사이클 9
+- **블로커: BINANCE_TESTNET_KEY/SECRET 입력 대기** (testnet.binancefuture.com에서 발급)
+  → 키 입력 후 `python -m src.check_testnet` 통과하면 다음 사이클부터 자동으로 테스트넷 실주문
+
+## [2026-06-11 04:30] Iteration 14 — 몬테카를로 신뢰구간 + 운영 안전장치 (실험 W)
+- W 몬테카를로 (30일 블록 부트스트랩 2,000회): CAGR 중앙값 +24.7% [5~95%: +6.8%~+45.6%]
+  - **P(손실) 1.1%, P(MDD<-50%) 12.3%, P(청산권 -70%) 0.3%** — 꼬리 위험 정량화
+- 운영 안전장치 구현: ① 킬스위치 (자산 고점 -15% → 전량 청산·거래 중단, 수동 해제)
+  ② equity_history.csv 자산 이력 기록 (백테스트 vs 실거래 드리프트 분석 기반)
+- pytest 48 passed (킬스위치 테스트 추가), 페이퍼 사이클 8
+- 다음: 페이퍼 누적. 7일 후 드리프트 분석 → final_report
+
+## [2026-06-11 03:40] Iteration 13 — 새 북 기준 스탑 고원 재검증 (실험 V)
+- 16조합 (sl 4/5/7/없음 × tr 6/8/10/없음, 실펀딩+볼타겟 포함 포트폴리오 레벨):
+  - **trailing 8% 열이 일관된 최적** (Sharpe 0.76~0.92), trailing이 stop_loss보다 지배적
+  - 스탑 전부 제거 시 CAGR 32.5%지만 MDD -76.7% — 스탑 = MDD 통제 장치 재확인
+  - (4%,8%)로 미세조정: **CAGR 26.4%, Sharpe 0.92, MDD -30.1%** ✅ (고원 내 인접 셀)
+- 페이퍼 북 반영 (sl 0.05→0.04), pytest 47 passed, 사이클 5, experiments.csv 436행
+- 다음: 페이퍼 누적 위주로 전환 검토 — 파라미터 캘리브레이션은 수렴 단계
+
+## [2026-06-11 03:20] Iteration 12 — 실펀딩 + 슈퍼트렌드 고원 (실험 T~U)
+- T: Binance 실펀딩 7,396건 수집(2019-09~). 평균 0.0108%/8h(가정치와 일치), 85% 양수
+  → 방향 반영 시 숏이 수취: CAGR 12.4→15.2%, Sharpe 0.56→0.65 (모델 정확화)
+- U: 슈퍼트렌드 16조합 9y WF — 12/16 OOS 양수, mult 1.5 열이 전 period 견고(0.56~0.70)
+  → (14,2.0)→(14,1.5) 교체: **CAGR 24.4%, Sharpe 0.86, MDD -35.8%, 2025 -18.3%** ✅
+- 최종형: sma(10,200) 50% + supertrend(14,1.5) 50%, 1d 2x, 스탑 5%/8%, volT 0.40
+- pytest 47 passed, 페이퍼 사이클 3, experiments.csv 420행
+- 다음: 페이퍼 사이클 누적. 남은 후보: 손절/트레일 재고원(새 북 기준), 4h 보조 추가 여부
+
+## [2026-06-11 02:55] Iteration 11 — 2025 손실 해부 + ADX/변동성 타게팅 (실험 R~S)
+- R 해부: 2025는 횡보 whipsaw(BTC -7.3%, 변동성 42%) — 슈퍼트렌드가 승률 30%로 -45.9% (전형적 추세전략 약점), sma_slow는 -20.2%
+- S-1 ADX 게이트(20/25): 기각 — 2025는 고치지만(adx25 +3.3%) 9y Sharpe 0.47→0.34로 본전 상실
+- S-2 **변동성 타게팅 0.40 채택**: 9y Sharpe 0.47→0.56, CAGR 11.1→12.4%(0.25 계단화), MDD -51→-49.7%
+  - 고원 확인: vt 0.3~0.5 전부 Sharpe 0.51~0.56
+- 페이퍼 트레이더에 분수 포지션(0.25 단위) 구현. pytest 47 passed, 사이클 2 (두 북 관망)
+- experiments.csv 401행
+- 다음: 페이퍼 사이클 누적 + 후보 실험: 펀딩비 실데이터 수집, 멀티심볼은 사용자 지시로 제외, 4h 슈퍼트렌드 파라미터 확장
+
+## [2026-06-11 02:30] Iteration 10 — 대형 배치: ML + 9년 풀히스토리 재검증 (실험 H~Q)
+- H: 레짐+스탑이 돈치안(20,10) OOS -0.17→+0.76 구제 (2y 기준)
+- I: 3북 포트폴리오 기각 — 돈치안이 SMA와 상관 0.41, Sharpe 희석
+- K: **ML 방향예측 참패** (4h -90%, 1d -17~-36%) — 다음 캔들 방향은 노이즈
+- L: ML 메타게이트 무효 (표본 부족)
+- M: **9년 풀히스토리 확보(2017~) → 기존 채택 전략 과적합 판명** (2y +86% → 9y -27%)
+- N~P: 9y 재스윕 — 생존자는 sma(10,200)+stop(OOS 0.51), supertrend(14,2)+stop(+151%). RSI는 전사
+- Q: 생존자 듀얼 채택: 9y +153%, CAGR 11.1%, MDD -51%(2x), 8/9년 양수 → 페이퍼 북 교체 ✅
+- experiments.csv 390행, pytest 47 passed, 페이퍼 상태 리셋 후 재가동
+- 다음: 새 북 페이퍼 사이클 누적, 2025 손실 원인 분석(횡보 whipsaw 추정), 변동성 타게팅 재실험
+
+## [2026-06-11 01:10] Iteration 9 — 연속 백테스팅 배치 (실험 A~G, 7건)
+- A 스탑 고원: (4~6%, 7~10%) 9/9 OOS 양수 — 스탑 값 견고, (5%,8%) 유지
+- B 레짐 룩백: 50/100/150 전부 양수, 150이 약간 우세하나 100 유지(과최적화 회피)
+- C RSI 정밀화: 현 (25/75, exit50)이 피크(OOS 1.27), 주변 5/9 양수
+- D/F **롱온리 발견: RSI 북 숏이 손실원** — 롱온리 OOS 1.37 > 양방향 1.27 → 북2 롱온리 전환 ✅
+- F2 walk-forward 윈도우: 6/9개월 안정 (4개월 음수는 SMA150 워밍업 artifact)
+- G **듀얼 v2: +86.1%, Sharpe 1.56, MDD -14.2%** — 슬리피지 4배에도 +74%, 연도별 전부 양수
+- experiments.csv 310행. pytest 47 passed. 페이퍼 사이클 4 (두 북 관망)
+- 다음: 백테스팅 계속 — 후보: 돈치안 롱온리+레짐, BB squeeze, 멀티타임프레임 확인 필터
+
+## [2026-06-11 00:50] Iteration 8 — 페이퍼 사이클 3 + 펀딩비 민감도 실험
+- 페이퍼: 두 북 모두 유지(0), BTC $61,034, 자산 $10,000 (데드크로스+하락레짐, RSI 38.7 중립 — 대기 정상)
+- 실험: 펀딩비 0.01→0.05%/8h로 5배 올려도 듀얼 포트폴리오 +81%→+49%, Sharpe 1.52→1.06 — **펀딩 가정에 견고**
+- 다음: 사이클 누적 계속
+
+## [2026-06-11 00:40] Iteration 7 — 유명 트레이더 기법 복제 + 자체 기법 합성
+- 한 일: 웹 리서치(터틀/래리 윌리엄스/슈퍼트렌드/MACD) → 4종 구현(+테스트 6개) → 80조합 백테스트 → 전부 OOS 음수 확인 → 위원회 앙상블 시도(기각) → 무상관(-0.06) 듀얼 포트폴리오 합성 → 페이퍼 트레이더 듀얼 북 개편
+- 결과: pytest 47 passed ✅. 듀얼 포트폴리오 +81.1%, Sharpe 1.52, MDD -13.0% — 채택. experiments.csv 286행
+- 다음: 듀얼 북 페이퍼 트레이딩 누적 (4h 북 때문에 사이클 간격 1~4h), 백테스트 vs 실체결 괴리 추적
+
+## [2026-06-10 23:55] Iteration 5~6 — 선물 전환 + Phase 4/5/6 완료 (연속 모드)
+- 한 일 (사용자 지시: BTC 단일, 레버리지, 멈춤없이):
+  1. 백테스트 엔진 선물화 — 레버리지/숏/펀딩비(0.01%/8h)/청산(intra-candle 증거금 소진) 모델
+  2. 전략 3종 롱/숏 양방향 확장, src/risk.py (손절/트레일링, 스탑 후 재진입 블록)
+  3. 실험 172행 누적: 무방비 3x = 전멸(-80~-100%, 청산 2건) → 스탑 필수 입증
+  4. src/ai_analyst.py — LLM 레짐 분류(키 대기) + rule 기반 폴백, 레짐필터 ON/OFF 정량 검증(개선 확인)
+  5. src/paper_trader.py — 테스트넷(sandbox 강제)/dry-run 이중 모드, 2사이클 가동
+- 결과: pytest 41 passed ✅. 채택: sma(20,150)+stop+레짐 1d 2x (주력), rsi(14,25/75)+stop5% 4h 1x (보조)
+- 다음: 페이퍼 트레이딩 사이클 누적 (1d 전략이라 일 단위 시그널 변화), 키 입력 시 LLM 레짐·테스트넷 전환
+
+## [2026-06-10 23:20] Iteration 4 — Phase 3 완료
+- 한 일: src/backtest.py (벡터화 엔진, 다음캔들 체결, 수수료+슬리피지, Sharpe/Sortino/MDD/승률/PF, B&H 벤치마크, walk-forward OOS 검증), 정확성 테스트 6개, results/backtest_summary.csv|json + experiments.csv 시드
+- 결과: pytest 18 passed ✅. 베이스라인 (2024-06~2026-06, B&H -12%인 하락장):
+  - 벤치마크 초과: sma_cross 4h (+12.7%, Sharpe 0.35) / sma_cross 1d (+14.5%, Sharpe 0.38)
+  - 단, OOS Sharpe는 sma_cross 4h -0.04, 1d 0.08로 약함. rsi_mean_revert 4h만 OOS Sharpe +0.37
+  - 1h 전략 전멸 (수수료에 갈림), bb_breakout 전 타임프레임 부진 → 보류
+- 다음: Phase 4는 ANTHROPIC_API_KEY 없음(블로커) → Phase 5(리스크 관리) 먼저 + 파라미터 실험 (LOOP.md 규칙: 막히면 다른 작업 먼저)
+
+## [2026-06-10 23:10] Iteration 3 — Phase 2 완료
+- 한 일: BaseStrategy + SmaCross/RsiMeanRevert/BbBreakout 3종 구현, config 기반 빌더(build_strategies), 합성데이터 단위테스트 7개 작성
+- 결과: 실데이터(1h, 17,519캔들) 스모크 — sma_cross 333회 전환/롱비중 51.5%, rsi 250회/17.7%, bb 633회/26.4%. pytest 12 passed ✅ (테스트 워밍업 경계 off-by-one 2건은 테스트 쪽 수정)
+- 다음: Phase 3 — src/backtest.py 벡터화 엔진(수수료 0.1%+슬리피지 0.05%, 다음 캔들 체결), 성과지표(Sharpe/MDD/승률/PF), Buy&Hold 벤치마크, walk-forward 검증
+
+## [2026-06-10 23:00] Iteration 2 — Phase 1 완료
+- 한 일: src/data.py 구현 (ccxt 페이지네이션 수집, parquet 캐싱, 증분 업데이트, 미완성 캔들 제거, 무결성 검증), tests/test_data.py 6개 테스트 작성
+- 결과: BTC/USDT 1h(17,519행)/4h(4,379행)/1d(729행) 2년치 수집 — 갭/NaN/중복 전부 0. pytest 6 passed ✅
+- 다음: Phase 2 — BaseStrategy + SMA크로스/RSI평균회귀/볼린저돌파 3종 구현
+
+## [2026-06-10 22:35] Iteration 1 — Phase 0 완료
+- 한 일: venv 생성(시스템 Python 3.9.6 — 3.11+ 미설치라 3.9로 진행), requirements.txt 설치, config.yaml/.gitignore/.env.example 작성, src/tests/data/results 디렉토리 골격 생성
+- 결과: ccxt 4.5.57, pandas 2.3.3, pyarrow 21.0.0, anthropic 0.109.1 전부 임포트 성공. Phase 0 완료 기준 충족 ✅
+- 다음: Phase 1 — src/data.py (ccxt OHLCV 수집 + parquet 캐싱 + 증분 업데이트) 구현, 2년치 BTC/USDT 1h/4h/1d 수집, pytest 작성
