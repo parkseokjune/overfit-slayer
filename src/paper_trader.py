@@ -42,7 +42,7 @@ BOOKS = {
                    "vol_target": 0.40},  # mult 1.5 열이 전 period 견고 (OOS 0.56~0.70)
 }
 VOL_STEP = 0.25  # 분수 포지션 계단화 (리밸런스 churn 축소)
-INITIAL_BALANCE = 10_000.0
+INITIAL_BALANCE = 5_000.0  # 데모 계좌 실잔고에 맞춤 (2026-06-11)
 KILL_SWITCH_DD = 0.15  # 자산 고점 대비 -15% → 전 포지션 청산 후 거래 중단 (수동 해제)
 EQUITY_CSV = RESULTS_DIR / "equity_history.csv"
 

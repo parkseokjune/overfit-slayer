@@ -53,12 +53,12 @@ venv\Scripts\pip install -r requirements.txt
 > 구 선물 테스트넷(testnet.binancefuture.com)에서 만든 키는 **더 이상 작동하지 않습니다.**
 > 본사이트의 "데모 트레이딩(Demo Trading / 모의 거래)" 환경에서 발급해야 합니다.
 
-1. https://www.binance.com 가입/로그인 (실계좌이지만 입금 불필요)
-2. 상단 메뉴 **선물(Futures)** → 우측 상단 프로필 아이콘 근처의 **데모 트레이딩(Demo Trading)** 클릭
-   (또는 https://www.binance.com/en/futures/demo 직접 접속)
-3. 데모 환경으로 전환된 상태에서 **API 관리(API Management)** → **Create API**
-4. 권한에서 **선물(Futures) 활성화** 체크, IP 제한은 "Unrestricted" (또는 운영 PC IP 등록)
-5. 발급된 Key/Secret을 `.env`에 입력
+1. **https://demo.binance.com** 접속 (바이낸스 본계정 로그인, 입금 불필요 — 가짜 USDT 지급)
+   (또는 binance.com에서 **[More] → [Demo Trading]** 메뉴)
+2. 데모 환경 우측 상단 **계정(Account) 아이콘** → **API Management** → **Create API**
+3. 발급된 Key/Secret을 `.env`에 입력 (Secret은 생성 직후 한 번만 표시 — 바로 복사)
+4. ⚠ `testnet.binance.vision`(현물)이나 구 `testnet.binancefuture.com` 키는 작동하지 않음
+   — 2026-06-11 검증: demo.binance.com 키로 잔고/레버리지/주문 전부 정상 확인됨
 
 > 🔒 **절대 규칙**: 실거래소(binance.com) 키는 절대 넣지 마세요. 코드가 sandbox 모드를 강제하지만,
 > 키 자체를 만들지 않는 게 가장 안전합니다. 테스트넷 키는 가짜 돈이라 유출돼도 손실이 없습니다.

@@ -1,5 +1,11 @@
 # LOG.md — 이터레이션 기록 (최신이 위)
 
+## [2026-06-11 06:40] Iteration 17 — 첫 실주문 테스트 성공 (현물 테스트넷)
+- 사용자 키 판별: 현물 테스트넷(testnet.binance.vision) 키였음 — 선물 데모(-2015)와 비호환
+- **실주문 왕복 검증 ✅**: 매수 0.001 BTC @ $61,979.01 → 매도 @ $62,123.85, 잔고 정합 확인
+- 인증/시장가주문/체결조회/잔고추적 파이프라인 전부 실환경에서 동작 확인
+- 남은 것: 선물 데모 트레이딩 키 (binance.com/en/futures/demo → API Management) — 교체 시 자동 전환
+
 ## [2026-06-11 05:50] Iteration 16 — 윈도우 24h 운영 체제 구축 + 데모 트레이딩 전환
 - runner.py: 무인 러너 (1h 사이클 + 일요일 자동 재검증 + 크래시 내성 + logs/runner.log)
 - src/revalidate.py: 주간 walk-forward 건강도 추적 → revalidation.csv, 열화 시 ALERT.txt
