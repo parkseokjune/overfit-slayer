@@ -4,12 +4,27 @@
 
 ---
 
-## 1. 파일 옮기기
+## 1. 파일 받기 — 깃허브에서 클론 (권장)
 
-`finance` 폴더 전체를 USB/클라우드로 복사 → 윈도우 컴퓨터의 `C:\trading\finance` 에 붙여넣기.
+저장소: **https://github.com/parkseokjune/btc-auto-trader** (프라이빗)
 
-> ⚠ `venv/` 폴더는 **복사하지 마세요** (맥 전용이라 윈도우에서 안 돌아감 — 아래에서 새로 만듭니다).
-> `data/`, `results/`는 복사하면 수집된 9년 데이터와 실험 기록을 그대로 가져갑니다 (권장).
+1. https://git-scm.com/download/win 에서 Git 설치 (기본 옵션으로 Next 연타)
+2. 명령 프롬프트(cmd)에서:
+
+```bat
+cd C:\
+mkdir trading
+cd trading
+git clone https://github.com/parkseokjune/btc-auto-trader.git finance
+cd finance
+```
+
+> 프라이빗 저장소라 클론 시 깃허브 로그인 창이 뜹니다 — 본인 계정(parkseokjune)으로 로그인.
+> `data/`(9년 시세)와 `results/`(실험 기록)는 저장소에 없지만, 첫 실행 시 **자동으로 재수집**됩니다 (몇 분 소요).
+> 이후 코드가 업데이트되면 `git pull` 한 줄로 받아옵니다.
+
+### (대안) USB/클라우드로 폴더 복사
+`finance` 폴더 전체 복사도 가능 — 단 `venv/`는 맥 전용이라 제외하고, `.env`는 키가 들어있으니 안전한 방법으로만 옮기세요.
 
 ## 2. Python 설치
 
