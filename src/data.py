@@ -127,3 +127,21 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def heal_gaps(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+    """거래소 다운타임 갭을 합성 플랫 캔들로 치유 (close=직전 종가, volume=0).
+
+    지표의 롤링 윈도우가 시간축에서 어긋나지 않게 한다. synthetic 컬럼으로 식별 가능.
+    """
+    tf_ms = TIMEFRAME_MS[timeframe]
+    full_ts = pd.Series(range(int(df["timestamp"].iloc[0]),
+                              int(df["timestamp"].iloc[-1]) + tf_ms, tf_ms),
+                        name="timestamp", dtype="int64")
+    out = pd.DataFrame({"timestamp": full_ts}).merge(df, on="timestamp", how="left")
+    out["synthetic"] = out["close"].isna()
+    prev_close = out["close"].ffill()
+    for col in ("open", "high", "low", "close"):
+        out[col] = out[col].fillna(prev_close)
+    out["volume"] = out["volume"].fillna(0.0)
+    return out
