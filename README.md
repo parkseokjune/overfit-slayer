@@ -1,4 +1,23 @@
-# BTC 자동매매 봇 — 9년 검증 생존자 듀얼 전략
+# ⚔️ Overfit Slayer
+
+**A Bitcoin futures trading bot that killed its own best strategy — because the data said so.**
+
+Most trading bots show you a beautiful 2-year backtest. This one found its own +86% strategy,
+re-tested it on 9 years of data, watched it collapse to -27%, **publicly executed it**, and
+rebuilt itself from the survivors. Fully automated, self-learning, long/short BTC perpetual
+futures — with the statistical honesty most retail bots avoid:
+
+- 🧪 **Walk-forward validation** over 9 years (99 windows), parameter *plateaus* not cherry-picked optima
+- 📉 **Deflated Sharpe Ratio** self-audit: we report that our own Sharpe 0.92 is *not* statistically distinguishable from selection luck (DSR 0.41–0.75) — live track record is the only real evidence
+- 🤖 **Self-learning with anti-overfit guardrails**: monthly re-calibration that *refuses* marginal improvements
+- ⚡ 60-second risk loop (real-time stops), 15-min signal cycle, maker-first execution
+- 💀 Graveyard included: famous strategies (Turtle, Larry Williams), ML direction prediction (-90%), funding carry — all tested, all rejected, all documented in [LOG.md](LOG.md)
+
+> Runs on Binance **Demo Trading** (fake money). Educational/research project — see disclaimer below.
+
+---
+
+## 한국어 소개
 
 완전 자동화 + 자가학습하는 비트코인 무기한 선물 롱/숏 트레이딩 시스템.
 Binance **데모 트레이딩**(가상자금) 기준으로 개발·검증됨.
@@ -42,7 +61,7 @@ runner.py (24시간 무인)
 상세 가이드: **[DEPLOY_LINUX_VPS.md](DEPLOY_LINUX_VPS.md)** (VPS 권장) / **[DEPLOY_WINDOWS.md](DEPLOY_WINDOWS.md)**
 
 ```bash
-git clone https://github.com/parkseokjune/btc-auto-trader.git finance
+git clone https://github.com/parkseokjune/overfit-slayer.git finance
 cd finance
 python3 -m venv venv && venv/bin/pip install -r requirements.txt
 

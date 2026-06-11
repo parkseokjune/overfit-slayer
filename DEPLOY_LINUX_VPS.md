@@ -30,9 +30,9 @@ ssh root@서버IP
 # 기본 도구
 apt update && apt install -y python3 python3-venv python3-pip git
 
-# 코드 받기 (프라이빗 저장소라 깃허브 로그인 필요)
+# 코드 받기
 cd /opt
-git clone https://github.com/parkseokjune/btc-auto-trader.git finance
+git clone https://github.com/parkseokjune/overfit-slayer.git finance
 cd finance
 
 # 가상환경 + 의존성
@@ -44,8 +44,6 @@ cp .env.example .env
 nano .env    # demo.binance.com에서 발급한 키 입력 후 Ctrl+O, Enter, Ctrl+X
 ```
 
-> 프라이빗 저장소 클론 시 Username = 깃허브 아이디, Password = **Personal Access Token**
-> (github.com → Settings → Developer settings → Personal access tokens → Generate, repo 권한 체크)
 
 ## 4. 검증
 

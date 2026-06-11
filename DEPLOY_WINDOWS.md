@@ -6,7 +6,7 @@
 
 ## 1. 파일 받기 — 깃허브에서 클론 (권장)
 
-저장소: **https://github.com/parkseokjune/btc-auto-trader** (프라이빗)
+저장소: **https://github.com/parkseokjune/overfit-slayer** (공개)
 
 1. https://git-scm.com/download/win 에서 Git 설치 (기본 옵션으로 Next 연타)
 2. 명령 프롬프트(cmd)에서:
@@ -15,11 +15,11 @@
 cd C:\
 mkdir trading
 cd trading
-git clone https://github.com/parkseokjune/btc-auto-trader.git finance
+git clone https://github.com/parkseokjune/overfit-slayer.git finance
 cd finance
 ```
 
-> 프라이빗 저장소라 클론 시 깃허브 로그인 창이 뜹니다 — 본인 계정(parkseokjune)으로 로그인.
+> 공개 저장소라 로그인 없이 바로 클론됩니다.
 > `data/`(9년 시세)와 `results/`(실험 기록)는 저장소에 없지만, 첫 실행 시 **자동으로 재수집**됩니다 (몇 분 소요).
 > 이후 코드가 업데이트되면 `git pull` 한 줄로 받아옵니다.
 
