@@ -39,9 +39,8 @@ cd finance
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 
-# 키 입력
-cp .env.example .env
-nano .env    # demo.binance.com에서 발급한 키 입력 후 Ctrl+O, Enter, Ctrl+X
+# 키 입력 (도우미가 물어보고 알아서 저장+점검)
+venv/bin/python setup_keys.py
 ```
 
 

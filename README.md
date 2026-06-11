@@ -58,21 +58,20 @@ runner.py (24시간 무인)
 
 ## 빠른 시작
 
-상세 가이드: **[DEPLOY_LINUX_VPS.md](DEPLOY_LINUX_VPS.md)** (VPS 권장) / **[DEPLOY_WINDOWS.md](DEPLOY_WINDOWS.md)**
+상세 가이드: **[DEPLOY_LINUX_VPS.md](DEPLOY_LINUX_VPS.md)** (VPS 권장) / **[DEPLOY_WINDOWS.md](DEPLOY_WINDOWS.md)** / **[DEPLOY_MAC.md](DEPLOY_MAC.md)**
 
 ```bash
 git clone https://github.com/parkseokjune/overfit-slayer.git finance
 cd finance
 python3 -m venv venv && venv/bin/pip install -r requirements.txt
 
-cp .env.example .env   # 키 입력 (아래 참고)
-venv/bin/python -m src.check_testnet   # 연결 점검
+venv/bin/python setup_keys.py        # 키 설정 도우미 (물어보면 붙여넣기 — 연결 점검까지 자동)
 venv/bin/python runner.py --once       # 1사이클 테스트
 venv/bin/python runner.py              # 무한 가동
 ```
 
-**API 키**: https://demo.binance.com (바이낸스 데모 트레이딩) 로그인 → API Management → Create API → `.env`에 입력.
-구 테스트넷(testnet.binance.vision / testnet.binancefuture.com) 키는 작동하지 않음.
+**API 키**: https://demo.binance.com (바이낸스 데모 트레이딩) 로그인 → API Management → Create API
+→ `setup_keys.py`가 물어볼 때 붙여넣기. 구 테스트넷(testnet.binance.vision / testnet.binancefuture.com) 키는 작동하지 않음.
 
 ⚠ **같은 키로 두 머신 동시 가동 금지** (이중 주문 발생).
 

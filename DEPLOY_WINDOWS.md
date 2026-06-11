@@ -39,47 +39,26 @@ python -m venv venv
 venv\Scripts\pip install -r requirements.txt
 ```
 
-## 4. API 키 — 어디서 구하고, 어디에 넣는가
+## 4. API 키 — 도우미가 알아서 해줍니다 (파일 위치 몰라도 됨)
 
-### 키 구하는 방법
+### ① 키 발급 (브라우저에서, 무료)
 
-| 키 | 발급처 | 방법 | 비용 |
-|---|---|---|---|
-| **BINANCE_TESTNET_KEY / SECRET** | binance.com **데모 트레이딩** | 아래 상세 절차 참고 ⬇ | 무료 (가짜 USDT 지급) |
-| ANTHROPIC_API_KEY (선택) | https://console.anthropic.com | 가입 → Settings → API Keys → Create Key | 유료 (AI 레짐 분류용, 없어도 규칙 기반으로 동작) |
+1. **https://demo.binance.com** 접속 → 바이낸스 본계정으로 로그인 (입금 불필요, 가짜 USDT 지급)
+2. 우측 상단 **계정(Account) 아이콘** → **API Management** → **Create API**
+3. 화면에 나온 **API Key**와 **Secret Key** 두 줄을 복사해두기 (Secret은 한 번만 표시됨!)
 
-#### 바이낸스 데모 트레이딩 키 발급 상세 (2025년부터 구 테스트넷 폐쇄됨 ⚠)
+> ⚠ `testnet.binance.vision`이나 `testnet.binancefuture.com`에서 만든 키는 **작동하지 않습니다** (폐쇄된 구 테스트넷).
+> 🔒 실거래소 본계정 API 키는 절대 사용 금지. 데모 키는 가짜 돈이라 유출돼도 손실 없음.
 
-> 구 선물 테스트넷(testnet.binancefuture.com)에서 만든 키는 **더 이상 작동하지 않습니다.**
-> 본사이트의 "데모 트레이딩(Demo Trading / 모의 거래)" 환경에서 발급해야 합니다.
-
-1. **https://demo.binance.com** 접속 (바이낸스 본계정 로그인, 입금 불필요 — 가짜 USDT 지급)
-   (또는 binance.com에서 **[More] → [Demo Trading]** 메뉴)
-2. 데모 환경 우측 상단 **계정(Account) 아이콘** → **API Management** → **Create API**
-3. 발급된 Key/Secret을 `.env`에 입력 (Secret은 생성 직후 한 번만 표시 — 바로 복사)
-4. ⚠ `testnet.binance.vision`(현물)이나 구 `testnet.binancefuture.com` 키는 작동하지 않음
-   — 2026-06-11 검증: demo.binance.com 키로 잔고/레버리지/주문 전부 정상 확인됨
-
-> 🔒 **절대 규칙**: 실거래소(binance.com 본계정) API 키는 절대 넣지 마세요. 코드가 데모 트레이딩
-> 모드를 강제하지만, 키 자체를 만들지 않는 게 가장 안전합니다. 데모 키는 가짜 돈이라 유출돼도 손실이 없습니다.
-
-### 키 넣는 곳
-
-`finance` 폴더 안의 `.env` 파일을 메모장으로 열어서:
-
-```
-ANTHROPIC_API_KEY=sk-ant-...        ← 선택
-BINANCE_TESTNET_KEY=발급받은키
-BINANCE_TESTNET_SECRET=발급받은시크릿
-```
-
-저장 후 연결 점검:
+### ② 키 입력 (cmd에서 한 줄 — .env 파일을 직접 만들 필요 없음)
 
 ```bat
-venv\Scripts\python -m src.check_testnet
+cd C:\trading\finance
+venv\Scripts\python setup_keys.py
 ```
 
-`모든 점검 통과` 가 나오면 준비 끝. 이후 자동으로 테스트넷 실주문 모드로 전환됩니다.
+실행하면 **키를 붙여넣으라고 물어보고, 알아서 저장하고, 연결 점검까지** 해줍니다.
+마지막에 `🎉 설정 끝!`이 나오면 성공입니다. (키를 바꿀 때도 같은 명령을 다시 실행하면 됩니다)
 
 ## 5. 24시간 돌리기
 
