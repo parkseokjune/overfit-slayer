@@ -47,7 +47,7 @@ def test_mark_to_market():
 
 
 def test_kill_switch_halts_trading(tmp_path, monkeypatch):
-    """자산이 고점 대비 -15% 넘게 빠지면 halted 플래그가 선다."""
+    """자산이 고점 대비 -40%(재난 백스톱) 넘게 빠지면 halted 플래그가 선다."""
     import src.paper_trader as pt
     monkeypatch.setattr(pt, "STATE_FILE", tmp_path / "s.json")
     monkeypatch.setattr(pt, "EQUITY_CSV", tmp_path / "e.csv")
@@ -56,8 +56,8 @@ def test_kill_switch_halts_trading(tmp_path, monkeypatch):
     # 시그널 고정: 항상 관망
     monkeypatch.setattr(pt, "compute_target_signal",
                         lambda sym, name: {"target": 0, "price": 50_000, "candle_ts": 0})
-    # 고점 12000, 현재 잔고 합 10000 → -16.7% → 킬스위치
-    state = {"mode": None, "cycles": 0, "peak_equity": 12_000.0,
+    # 고점 17000, 현재 잔고 합 10000 → -41% → 킬스위치
+    state = {"mode": None, "cycles": 0, "peak_equity": 17_000.0,
              "books": {n: {"balance": 5_000.0, "position": 0, "entry_price": None, "qty": 0.0}
                        for n in pt.BOOKS}}
     (tmp_path / "s.json").write_text(__import__("json").dumps(state))

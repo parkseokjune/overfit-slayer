@@ -36,7 +36,9 @@ def get_books() -> dict:
 BOOKS = get_books()  # 모듈 로드 시점 스냅샷 (run_once는 매번 재로드)
 VOL_STEP = 0.25  # 분수 포지션 계단화 (리밸런스 churn 축소)
 INITIAL_BALANCE = 5_000.0  # 데모 계좌 실잔고에 맞춤 (2026-06-11)
-KILL_SWITCH_DD = 0.15  # 자산 고점 대비 -15% → 전 포지션 청산 후 거래 중단 (수동 해제)
+KILL_SWITCH_DD = 0.40  # 재난 백스톱: 고점 -40% → 전량 청산·중단 (수동 해제)
+# 주의: -15%였던 구버전은 백테스트 기대 MDD(-30%)와 모순 — 9y 시뮬레이션 결과 영구정지로
+# CAGR 1.1%가 됨(모순 입증). -40%는 9y 무발동, 역사 밖 시나리오 전용 보험 (2026-06-11 재설계)
 EQUITY_CSV = RESULTS_DIR / "equity_history.csv"
 
 
@@ -71,8 +73,39 @@ def load_state() -> dict:
 
 
 def save_state(state: dict):
+    """원자적 저장 — 쓰다 죽어도 기존 파일은 온전 (temp 후 rename)."""
     RESULTS_DIR.mkdir(exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    tmp = STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    os.replace(tmp, STATE_FILE)
+
+
+def reconcile(ex, state: dict, price: float) -> dict:
+    """장부 vs 거래소 실포지션 대조 — 불일치 시 신규 진입 차단 + 경고.
+
+    부분체결/재시작 중 체결/수동 개입으로 로컬 장부가 어긋난 채 거래하는 것을 방지.
+    """
+    if ex is None:
+        state["recon"] = "dry_run"
+        return state
+    local_qty = sum(
+        b["qty"] * (1 if b["position"] > 0 else -1 if b["position"] < 0 else 0)
+        for b in state["books"].values())
+    exch_qty = 0.0
+    for p in ex.fetch_positions([FUTURES_SYMBOL]):
+        if p.get("contracts"):
+            exch_qty += float(p["contracts"]) * (1 if p["side"] == "long" else -1)
+    diff_notional = abs(local_qty - exch_qty) * price
+    if diff_notional > MIN_NOTIONAL:  # 최소주문 단위 이상 어긋나면 진짜 불일치
+        state["recon"] = f"MISMATCH local={local_qty:.4f} exch={exch_qty:.4f}"
+        state["recon_block"] = True  # 신규 진입 차단 (청산은 허용)
+        (RESULTS_DIR / "ALERT.txt").write_text(
+            f"포지션 불일치: 장부 {local_qty:.4f} vs 거래소 {exch_qty:.4f} BTC "
+            f"(명목 ${diff_notional:,.0f}) — 수동 확인 필요. 신규 진입 차단됨.\n")
+    else:
+        state["recon"] = "ok"
+        state["recon_block"] = False
+    return state
 
 
 def record_trade(row: dict):
@@ -234,11 +267,16 @@ def fetch_live_price(ex=None) -> float:
     return float(pub.fetch_ticker("BTC/USDT")["last"])
 
 
-def fast_risk_check() -> dict:
-    """고속 리스크 루프 (매분) — 실시간 가격으로 스탑/트레일링/킬스위치 즉시 집행.
+EMERGENCY_MULT = 2.0  # 비상밴드 = 손절폭의 2배 (예: sl 4% → 장중 -8% 폭주 시만 즉시 청산)
 
-    백테스트는 캔들 내 저가/고가에서 스탑이 발동된다고 가정한다.
-    이 루프가 그 가정을 라이브에서 실현한다 (시간봉 마감 대기 없이 즉시 청산).
+
+def fast_risk_check() -> dict:
+    """고속 리스크 루프 (매분) — 비상밴드 + 킬스위치 전용.
+
+    ⚠ 일상 손절/트레일링은 여기서 집행하지 않는다 — 검증된 정책은 일봉 종가 평가
+    (신호 사이클의 apply_stops)이며, 장중 터치 즉시 체결은 9y 시뮬레이션에서
+    CAGR 21.6%→-0.2%로 전략을 파괴함(위크 청산). 이 루프는 진입가 대비
+    손절폭의 2배를 초과하는 장중 폭주(재난)만 즉시 끊는다.
     """
     state = load_state()
     ex = make_testnet_exchange()
@@ -252,26 +290,21 @@ def fast_risk_check() -> dict:
             continue
         direction = 1 if book["position"] > 0 else -1
         entry = book["entry_price"]
-        # 극값 갱신 (트레일링 기준점)
+        # 극값 추적은 유지 (일상 트레일링은 신호 사이클이 일봉 기준으로 평가)
         ext = book.get("extreme") or entry
         ext = max(ext, price) if direction > 0 else min(ext, price)
         book["extreme"] = ext
 
-        sl, tr = bcfg["stop_loss"], bcfg["trailing"]
+        emergency_loss = EMERGENCY_MULT * bcfg["stop_loss"]
         loss = (price / entry - 1) * direction
-        pullback = (price / ext - 1) * direction  # 극값 대비 후퇴 (항상 ≤0)
-        stop_hit = sl and loss <= -sl
-        trail_hit = tr and pullback <= -tr
-
-        if stop_hit or trail_hit:
-            reason = "손절" if stop_hit else "트레일링"
+        if loss <= -emergency_loss:  # 재난 폭주만 즉시 청산
             if ex:
                 execute_testnet(ex, book, 0, "BTC/USDT", price, bcfg["leverage"], book=name)
             else:
                 execute_dry_run(book, 0, price, bcfg["leverage"], book=name)
-            book["blocked_sign"] = direction  # 원시 신호 리셋/반전까지 재진입 금지
+            book["blocked_sign"] = direction
             book["extreme"] = None
-            events.append(f"{name}: {reason} 청산 @ ${price:,.0f} (진입 ${entry:,.0f})")
+            events.append(f"{name}: 비상밴드(-{emergency_loss*100:.0f}%) 청산 @ ${price:,.0f} (진입 ${entry:,.0f})")
 
     state["equity"] = round(sum(mark_to_market(b, price)
                                 for b in state["books"].values()), 2)
@@ -300,6 +333,11 @@ def run_once() -> dict:
 
     actions, price = {}, None
     halted = state.get("halted", False)
+    if ex:
+        state = reconcile(ex, state, fetch_live_price(ex))
+        if state.get("recon_block"):
+            halted = True  # 불일치 해소 전 신규 진입 차단
+            actions["RECON"] = state["recon"]
     for name, bcfg in get_books().items():
         book = state["books"].setdefault(name, _fresh_book(bcfg["weight"]))
         info = compute_target_signal(symbol, name)
