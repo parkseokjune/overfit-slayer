@@ -56,12 +56,20 @@ def backtest_daily_returns() -> pd.Series:
 
 
 def live_daily_returns() -> pd.Series:
-    """equity_history.csv(시간당 스냅샷) → 일별 마지막 자산 → 일일수익률."""
+    """equity_history 스냅샷 → 최신 운용 epoch의 일일수익률.
+
+    장부 리셋/자본 재배분(거래 없이 ±20% 초과 점프)은 수익이 아니므로
+    마지막 점프 이후 구간만 사용한다 — 리셋을 손실로 오인한 가짜 CRITICAL 방지.
+    """
     if not EQUITY_CSV.exists():
         return pd.Series(dtype=float)
     eq = pd.read_csv(EQUITY_CSV)
     eq["dt"] = pd.to_datetime(eq["ts"], unit="s", utc=True)
-    daily = eq.set_index("dt")["equity"].resample("1D").last().dropna()
+    snap = eq.set_index("dt")["equity"].dropna()
+    jumps = snap.pct_change().abs() > 0.20  # 스냅샷 간 ±20% 초과 = 리셋으로 간주
+    if jumps.any():
+        snap = snap[snap.index >= snap.index[jumps][-1]]
+    daily = snap.resample("1D").last().dropna()
     return daily.pct_change().dropna()
 
 

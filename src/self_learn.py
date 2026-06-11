@@ -41,11 +41,14 @@ def _current_margin() -> float:
 GRIDS = {
     "sma_cross": [{"fast": f, "slow": s} for f in (10, 20, 30) for s in (150, 200, 250, 300)],
     "supertrend": [{"period": p, "multiplier": m} for p in (7, 10, 14, 20) for m in (1.25, 1.5, 2.0)],
+    "bb_breakout": [{"period": p, "std": s} for p in (14, 20, 30) for s in (1.5, 2.0, 2.5)],
 }
 
 
 def _build(family: str, params: dict, stop_loss: float, trailing: float):
-    cls = {"sma_cross": SmaCross, "supertrend": Supertrend}[family]
+    from .strategies import BbBreakout
+    cls = {"sma_cross": SmaCross, "supertrend": Supertrend,
+           "bb_breakout": BbBreakout}[family]
     return StopWrapped(cls(**params), stop_loss, trailing)
 
 

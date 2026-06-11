@@ -29,7 +29,7 @@ Binance **데모 트레이딩**(가상자금) 기준으로 개발·검증됨.
 
 ## 운용 전략
 
-**"9년 생존자 듀얼"** — 2017~2026 풀 히스토리에서 walk-forward 99윈도우를 통과한 두 전략에 자본 배분:
+**"9년 생존자 트리오"** — 2017~2026 풀 히스토리에서 walk-forward + 고원 검증을 통과한 세 전략에 자본 배분:
 
 | 북 | 전략 | 비중 | 설정 |
 |---|---|---|---|
@@ -45,7 +45,7 @@ Binance **데모 트레이딩**(가상자금) 기준으로 개발·검증됨.
 **기대 성과 — 검증 계층별** (상세: [docs/RATIONALE.md](docs/RATIONALE.md)):
 | 증거 계층 | 결과 | 비고 |
 |---|---|---|
-| **프로세스 OOS** (6개월 롤링 재선택, 선택편향 0) | **CAGR 18.1%, Sharpe 0.69, MDD -25.2%** | ⭐ 기본 시나리오 |
+| **프로세스 OOS** (6개월 롤링 재선택, 선택편향 0, 3북·2.5x) | **CAGR 41.0%, Sharpe 1.01, MDD -28.0%** | ⭐ 기본 시나리오 |
 | 9년 백테스트 (실측 펀딩 반영) | CAGR 26.4%, Sharpe 0.92, MDD -30.1% | 낙관 시나리오 |
 | 역사 스트레스 (2018/코로나/LUNA·FTX) | 전 위기 구간 플러스 | 숏이 폭락에서 수익 |
 | 블록 부트스트랩 2,000회 | P(손실) 0.8%, P(MDD<-50%) 12.6% | 역사 수준 꼬리 가정 |
@@ -96,7 +96,7 @@ venv/bin/python runner.py              # 무한 가동
 src/
 ├── data.py            # OHLCV 수집/캐싱/갭치유 (Binance, parquet)
 ├── backtest.py        # 선물 백테스트 엔진 (레버리지/숏/청산/펀딩, walk-forward)
-├── strategies/        # 전략 10종 (채택 2 + 검증 후 기각 8)
+├── strategies/        # 전략 10종 (채택 3 + 검증 후 기각 7)
 ├── risk.py            # 손절/트레일링 (재진입 블록)
 ├── paper_trader.py    # 집행 엔진 (데모 실주문/dry-run, maker 집행, 고속 리스크)
 ├── self_learn.py      # 자가학습 (월간/경고 트리거 재보정)
@@ -104,10 +104,10 @@ src/
 ├── revalidate.py      # 주간 walk-forward 건강도
 ├── stats_validation.py# PSR / Deflated Sharpe Ratio
 └── ai_analyst.py      # 시장 레짐 분류 (rule 기반 + Claude API 옵션)
-tests/                 # pytest 63개
+tests/                 # pytest 67개
 runner.py              # 24시간 무인 러너
 config.yaml            # 전략/북/집행 설정 (자가학습이 자동 갱신)
-LOG.md / STATE.md      # 전체 개발·실험 기록 (이터레이션 25회, 실험 470+건)
+LOG.md / STATE.md      # 전체 개발·실험 기록 (이터레이션 30회, 실험 500+건)
 ```
 
 ## 모니터링
