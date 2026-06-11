@@ -10,7 +10,7 @@ market:
   - 1d
   history_days: 730
 futures:
-  leverage: 3
+  leverage: 2.5
   allow_short: true
   funding_rate_8h: 0.0001
 backtest:
@@ -45,7 +45,7 @@ execution:
   maker_offset_bps: 1
 books:
   sma_slow:
-    weight: 0.5
+    weight: 0.4
     timeframe: 1d
     leverage: 2.5
     strategy: sma_cross
@@ -56,7 +56,7 @@ books:
     regime_filter: false
     vol_target: 0.4
   supertrend:
-    weight: 0.5
+    weight: 0.4
     timeframe: 1d
     leverage: 2.5
     strategy: supertrend
@@ -66,3 +66,15 @@ books:
     trailing: 0.08
     regime_filter: false
     vol_target: 0.4
+  bb_breakout:
+    weight: 0.2
+    timeframe: 1d
+    leverage: 2.5
+    strategy: bb_breakout
+    period: 20
+    std: 2.0
+    stop_loss: 0.04
+    trailing: null
+    regime_filter: false
+    vol_target: 0.4
+    long_only: true

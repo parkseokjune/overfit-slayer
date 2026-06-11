@@ -56,8 +56,8 @@ def test_kill_switch_halts_trading(tmp_path, monkeypatch):
     # 시그널 고정: 항상 관망
     monkeypatch.setattr(pt, "compute_target_signal",
                         lambda sym, name: {"target": 0, "price": 50_000, "candle_ts": 0})
-    # 고점 17000, 현재 잔고 합 10000 → -41% → 킬스위치
-    state = {"mode": None, "cycles": 0, "peak_equity": 17_000.0,
+    # 고점 26000, 현재 잔고 합 (북수×5000) → -42%대 → 킬스위치
+    state = {"mode": None, "cycles": 0, "peak_equity": 26_000.0,
              "books": {n: {"balance": 5_000.0, "position": 0, "entry_price": None, "qty": 0.0}
                        for n in pt.BOOKS}}
     (tmp_path / "s.json").write_text(__import__("json").dumps(state))

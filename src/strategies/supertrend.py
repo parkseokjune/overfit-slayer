@@ -31,8 +31,14 @@ class Supertrend(BaseStrategy):
         upper = upper_basic.copy()
         lower = lower_basic.copy()
         trend = np.zeros(n)  # 1 상승 / -1 하락
+        initialized = False  # 첫 유효 캔들에서 명시적 초기화 (리뷰 반영 — 9y 신호 동일성 검증 완료)
         for i in range(1, n):
             if np.isnan(upper_basic[i]) or atr.iloc[i] == 0:
+                continue
+            if not initialized:
+                mid_band = (upper_basic[i] + lower_basic[i]) / 2
+                trend[i] = 1 if close[i] > mid_band else -1
+                initialized = True
                 continue
             # 래칫: 추세 방향으로만 밴드 갱신
             upper[i] = min(upper_basic[i], upper[i - 1]) if close[i - 1] <= upper[i - 1] else upper_basic[i]

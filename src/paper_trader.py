@@ -1,11 +1,9 @@
-"""페이퍼 트레이딩 — Binance USDT-M 선물 테스트넷 (키 없으면 dry-run 시뮬레이션).
+"""집행 엔진 — Binance 데모 트레이딩 (키 없으면 dry-run 시뮬레이션).
 
-가드레일: set_sandbox_mode(True) 강제. 실거래소 엔드포인트로는 절대 주문하지 않는다.
+가드레일: enable_demo_trading(True) 강제 — 실거래소로는 절대 주문하지 않는다.
 
-사이클(run_once):
-1. 최신 캔들 갱신 → 채택 전략 시그널 계산 (레짐 필터 + 스탑 적용)
-2. 목표 포지션과 현재 포지션 비교 → 차이만큼 주문 (시장가)
-3. 상태/거래 기록 저장 (results/paper_state.json, results/paper_trades.csv)
+run_once(15분): 캔들 갱신 → 시그널/일봉 스탑 평가 → maker 지정가 주문 → 기록
+fast_risk_check(60초): 비상밴드(2×손절 폭주)·킬스위치 전용 (일상 스탑은 일봉 종가 평가)
 """
 import csv
 import json
@@ -136,6 +134,9 @@ def compute_target_signal(symbol: str, book_name: str) -> dict:
     elif b["strategy"] == "supertrend":
         raw = Supertrend(period=b["period"],
                          multiplier=b["multiplier"]).generate_signals(df)
+    elif b["strategy"] == "bb_breakout":
+        from .strategies import BbBreakout
+        raw = BbBreakout(period=b["period"], std=b["std"]).generate_signals(df)
     else:
         raw = RsiMeanRevert(period=b["period"], oversold=b["oversold"],
                             overbought=b["overbought"]).generate_signals(df)

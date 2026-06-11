@@ -23,6 +23,19 @@ from .strategies import SmaCross, Supertrend
 
 HISTORY_CSV = RESULTS_DIR / "self_learn_history.csv"
 IMPROVE_MARGIN = 0.15  # 현재 대비 OOS Sharpe 최소 개선폭
+MARGIN_WHEN_CRITICAL = 0.05  # 드리프트 CRITICAL 시 — 열화 확인된 상태선 더 기꺼이 교체
+
+
+def _current_margin() -> float:
+    """드리프트 상태에 따라 교체 마진 조정 (외부 리뷰: 라이브 신호를 학습에 연결)."""
+    import json
+    drift_file = RESULTS_DIR / "drift_status.json"
+    try:
+        if json.loads(drift_file.read_text()).get("state") == "CRITICAL":
+            return MARGIN_WHEN_CRITICAL
+    except Exception:
+        pass
+    return IMPROVE_MARGIN
 
 # 패밀리별 탐색 그리드 (검증된 영역 주변만)
 GRIDS = {
@@ -36,9 +49,25 @@ def _build(family: str, params: dict, stop_loss: float, trailing: float):
     return StopWrapped(cls(**params), stop_loss, trailing)
 
 
-def _neighbors(grid: list, idx: int) -> list:
-    """그리드에서 자기 자신 제외 인접 인덱스 (1차원 근사 — 정렬된 그리드 가정)."""
-    return [i for i in (idx - 1, idx + 1) if 0 <= i < len(grid)]
+def _neighbors(grid_results: list, target_params: dict) -> list:
+    """파라미터 공간의 진짜 이웃 — 정확히 한 축에서 한 그리드 스텝 차이 (맨해튼 거리 1).
+
+    (외부 리뷰 반영: 1차원 인덱스 근사는 2D 그리드의 기하를 반영 못함)
+    """
+    keys = list(target_params.keys())
+    # 축별 정렬된 유니크 값으로 "한 스텝"을 정의
+    axes = {k: sorted({r["params"][k] for r in grid_results}) for k in keys}
+
+    def is_step_neighbor(p: dict) -> bool:
+        diff_axes = [k for k in keys if p[k] != target_params[k]]
+        if len(diff_axes) != 1:
+            return False
+        k = diff_axes[0]
+        vals = axes[k]
+        i, j = vals.index(target_params[k]), vals.index(p[k])
+        return abs(i - j) == 1
+
+    return [r for r in grid_results if is_step_neighbor(r["params"])]
 
 
 def evaluate_family(df, family: str, book_cfg: dict, fee: float, slip: float,
@@ -67,17 +96,17 @@ def decide(grid_results: list, current_params: dict) -> dict:
         return {"action": "유지", "chosen": current_params,
                 "reason": f"현재가 최적 (OOS {cur_oos:.2f})"}
 
-    # 고원 검사: 베스트의 그리드 이웃 OOS 중앙값 > 0
-    idx = next(i for i, r in enumerate(grid_results) if r["params"] == best["params"])
-    nb = [grid_results[i]["oos_sharpe"] for i in _neighbors(grid_results, idx)]
+    # 고원 검사: 파라미터 축 기준 이웃(맨해튼 1)의 OOS 중앙값 > 0
+    nb = [r["oos_sharpe"] for r in _neighbors(grid_results, best["params"])]
     plateau_ok = len(nb) > 0 and pd.Series(nb).median() > 0
 
     if not plateau_ok:
         return {"action": "유지", "chosen": current_params,
                 "reason": f"베스트 {best['params']}(OOS {best['oos_sharpe']:.2f})는 고립 스파이크 — 고원 검사 실패"}
-    if best["oos_sharpe"] < cur_oos + IMPROVE_MARGIN:
+    margin = _current_margin()
+    if best["oos_sharpe"] < cur_oos + margin:
         return {"action": "유지", "chosen": current_params,
-                "reason": f"개선폭 부족 ({best['oos_sharpe']:.2f} vs 현재 {cur_oos:.2f}, 마진 {IMPROVE_MARGIN})"}
+                "reason": f"개선폭 부족 ({best['oos_sharpe']:.2f} vs 현재 {cur_oos:.2f}, 마진 {margin})"}
     return {"action": "교체", "chosen": best["params"],
             "reason": f"OOS {cur_oos:.2f}→{best['oos_sharpe']:.2f}, 고원 통과"}
 

@@ -23,17 +23,36 @@ EQUITY_CSV = RESULTS_DIR / "equity_history.csv"
 
 
 def backtest_daily_returns() -> pd.Series:
-    """현재 채택 전략(생존자 듀얼 + 볼타겟)의 백테스트 일일수익률."""
+    """현재 채택 전략의 백테스트 일일수익률 — config.yaml books에서 동적 구성.
+
+    (외부 리뷰 지적 반영: 하드코딩 시 자가학습이 config를 바꾸면 드리프트 기준
+    분포가 실운용 전략과 어긋남 — 단일 진실 원천 = books)
+    """
+    from .data import load_config
+    books = load_config().get("books", {})
     d1 = load_data("BTC/USDT", "1d")
     realized = d1["close"].pct_change().rolling(30).std() * np.sqrt(365)
-    scale = ((0.40 / realized).clip(upper=1.0).fillna(0.0) / 0.25).round() * 0.25
 
-    def book(strat):
-        sig = apply_stops(d1, strat.generate_signals(d1), 0.04, 0.08) * scale
-        return run_backtest(d1, sig, "1d", 0.0005, 0.0005, leverage=2,
-                            allow_short=True, funding_rate_8h=0.0001)["strategy_returns"]
-
-    return (0.5 * book(SmaCross(10, 200)) + 0.5 * book(Supertrend(14, 1.5))).dropna()
+    parts = []
+    for b in books.values():
+        if b["strategy"] == "sma_cross":
+            strat = SmaCross(b["fast"], b["slow"])
+        elif b["strategy"] == "supertrend":
+            strat = Supertrend(b["period"], b["multiplier"])
+        else:
+            from .strategies import BbBreakout
+            strat = BbBreakout(b["period"], b["std"])
+        scale = ((b.get("vol_target", 0.40) / realized).clip(upper=1.0).fillna(0.0)
+                 / 0.25).round() * 0.25
+        raw = strat.generate_signals(d1)
+        if b.get("long_only"):
+            raw = raw.clip(lower=0)
+        sig = apply_stops(d1, raw, b["stop_loss"], b["trailing"]) * scale
+        r = run_backtest(d1, sig, b["timeframe"], 0.0005, 0.0005,
+                         leverage=b["leverage"], allow_short=True,
+                         funding_rate_8h=0.0001)["strategy_returns"]
+        parts.append(b["weight"] * r)
+    return sum(parts).dropna()
 
 
 def live_daily_returns() -> pd.Series:

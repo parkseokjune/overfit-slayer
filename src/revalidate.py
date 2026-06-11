@@ -27,14 +27,22 @@ def revalidate() -> dict:
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df = df.set_index("datetime")
 
-    books = {
-        "sma_slow": StopWrapped(SmaCross(10, 200), 0.04, 0.08),
-        "supertrend": StopWrapped(Supertrend(14, 1.5), 0.04, 0.08),
-    }
+    book_cfgs = cfg.get("books", {})
+    books = {}
+    for name, b in book_cfgs.items():
+        if b["strategy"] == "sma_cross":
+            inner = SmaCross(b["fast"], b["slow"])
+        elif b["strategy"] == "supertrend":
+            inner = Supertrend(b["period"], b["multiplier"])
+        else:
+            from .strategies import BbBreakout
+            inner = BbBreakout(b["period"], b["std"])
+        books[name] = StopWrapped(inner, b["stop_loss"], b["trailing"])
     row = {"date": time.strftime("%Y-%m-%d"), "last_candle": str(df.index[-1].date())}
     for name, strat in books.items():
+        lev = book_cfgs[name]["leverage"]
         wf = walk_forward(df, strat, "1d", fee, slip, 6, 1,
-                          leverage=2, allow_short=True, funding_rate_8h=0.0001)
+                          leverage=lev, allow_short=True, funding_rate_8h=0.0001)
         row[f"{name}_oos_sharpe"] = wf["oos_sharpe"]
         row[f"{name}_oos_return_pct"] = wf["oos_return_pct"]
 
