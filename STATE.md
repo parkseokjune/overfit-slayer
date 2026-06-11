@@ -1,9 +1,9 @@
 # STATE.md — 현재 진행 상태
 
-- **현재 Phase**: 6 (페이퍼 트레이딩 운영) — Phase 0~5 전부 완료
-- **Next Task**: 매 이터레이션 `python -m src.paper_trader` 실행(주력 전략 dry-run), 4h 보조 전략 페이퍼 트레이딩 추가 검토, 7일 기록 누적 후 final_report
-- **이터레이션 횟수**: 6 (연속 모드)
-- **블로커**: ANTHROPIC_API_KEY 없음(LLM 레짐 분류는 rule 기반으로 대체 운용 중), BINANCE_TESTNET_KEY 없음(테스트넷 실주문 대신 dry-run 운용 중) — 키 추가 시 자동 전환됨
+- **단계**: 운용 모드 — 데모 실주문(testnet) 가동 중, 24h 러너 (60초 리스크틱/15분 신호)
+- **Next**: 라이브 기록 누적 (3일차부터 드리프트 판정, 30일차 PSR 검정 → 최종 리포트)
+- **이터레이션**: 23회 완료 (LOG.md 참조)
+- **블로커**: 없음 (ANTHROPIC_API_KEY는 선택사항)
 
 ## 방향 (사용자 지시 2026-06-10)
 - 비트코인 단일, **레버리지 선물** (숏 허용, 펀딩비/청산 모델 반영), 루프 대기 없이 연속 진행
@@ -33,14 +33,11 @@
 ## 실험 요점
 - 무방비 3x 양방향 = 전 전략 -80~-100% (rsi 4h/1d 실제 청산) → 스탑 필수 확인
 - 손절5%+트레일링8% 조합이 일관되게 OOS 개선. 1h는 수수료에 전멸 → 제외
-- 전체 기록: results/experiments.csv (140행)
+- 전체 기록: results/experiments.csv (460+행)
 
 ## 환경 메모
 - Python 3.9.6 (시스템) 기반 venv — 3.11+ 없어서 3.9로 진행, 현재까지 호환 문제 없음
 - venv 경로: `./venv` — 실행은 `./venv/bin/python`, `./venv/bin/pytest` 사용
-
-## 채택 전략 (walk-forward 통과한 것만)
-(아직 없음)
 
 ## 사용자 입력 대기 항목
 - [x] `BINANCE_TESTNET_KEY/SECRET` — ✅ 입력 완료 (demo.binance.com 키, 2026-06-11 검증 통과)
