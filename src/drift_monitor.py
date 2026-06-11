@@ -55,22 +55,27 @@ def backtest_daily_returns() -> pd.Series:
     return sum(parts).dropna()
 
 
-def live_daily_returns() -> pd.Series:
-    """equity_history 스냅샷 → 최신 운용 epoch의 일일수익률.
+def live_daily_returns() -> tuple:
+    """equity_history 스냅샷 → 현재 epoch의 일일수익률 + (사용/제외 표본수).
 
-    장부 리셋/자본 재배분(거래 없이 ±20% 초과 점프)은 수익이 아니므로
-    마지막 점프 이후 구간만 사용한다 — 리셋을 손실로 오인한 가짜 CRITICAL 방지.
+    epoch 경계는 paper_state.json의 epoch_start(장부 리셋 시 명시 기록)로 판정.
+    점프 크기 추론을 쓰지 않으므로 실제 폭락일이 오인 제외될 수 없다 (외부 리뷰 반영).
     """
     if not EQUITY_CSV.exists():
-        return pd.Series(dtype=float)
+        return pd.Series(dtype=float), 0
     eq = pd.read_csv(EQUITY_CSV)
+    total = len(eq)
+    epoch = 0
+    state_file = RESULTS_DIR / "paper_state.json"
+    try:
+        epoch = json.loads(state_file.read_text()).get("epoch_start", 0)
+    except Exception:
+        pass
+    eq = eq[eq["ts"] >= epoch]
+    excluded = total - len(eq)
     eq["dt"] = pd.to_datetime(eq["ts"], unit="s", utc=True)
-    snap = eq.set_index("dt")["equity"].dropna()
-    jumps = snap.pct_change().abs() > 0.20  # 스냅샷 간 ±20% 초과 = 리셋으로 간주
-    if jumps.any():
-        snap = snap[snap.index >= snap.index[jumps][-1]]
-    daily = snap.resample("1D").last().dropna()
-    return daily.pct_change().dropna()
+    daily = eq.set_index("dt")["equity"].resample("1D").last().dropna()
+    return daily.pct_change().dropna(), excluded
 
 
 def bootstrap_percentile(bt_returns: np.ndarray, live_cum: float, n_days: int,
@@ -88,8 +93,8 @@ def bootstrap_percentile(bt_returns: np.ndarray, live_cum: float, n_days: int,
 
 
 def drift_check() -> dict:
-    live = live_daily_returns()
-    status = {"live_days": len(live)}
+    live, excluded = live_daily_returns()
+    status = {"live_days": len(live), "excluded_snapshots": excluded}
     if len(live) < 3:
         status["state"] = "수집 중 (3일 미만 — 판정 보류)"
         DRIFT_FILE.parent.mkdir(exist_ok=True)

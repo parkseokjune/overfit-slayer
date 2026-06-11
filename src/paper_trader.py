@@ -65,8 +65,8 @@ def load_state() -> dict:
         state = json.loads(STATE_FILE.read_text())
         if "books" in state:
             return state
-    # 신규 또는 구버전(단일 북) → 듀얼 북으로 초기화
-    return {"mode": None, "cycles": 0,
+    # 신규 또는 구버전 → 현재 books 구성으로 초기화 (epoch_start = 드리프트 측정 시작점)
+    return {"mode": None, "cycles": 0, "epoch_start": int(time.time()),
             "books": {name: _fresh_book(b["weight"]) for name, b in get_books().items()}}
 
 
