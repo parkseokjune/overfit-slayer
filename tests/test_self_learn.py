@@ -63,3 +63,38 @@ def test_2d_adopts_plateau():
     d = decide(g, {"fast": 30, "slow": 300})
     assert d["action"] == "교체"
     assert d["chosen"] == {"fast": 20, "slow": 200}
+
+
+def test_policy_observe_mode_blocks(tmp_path, monkeypatch):
+    """라이브 90일 미만 + 드리프트 정상 → 교체 차단 (관측 모드)."""
+    import json, time
+    import src.self_learn as sl
+    monkeypatch.setattr(sl, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(sl, "HISTORY_CSV", tmp_path / "h.csv")
+    (tmp_path / "paper_state.json").write_text(json.dumps({"epoch_start": int(time.time()) - 10*86400}))
+    (tmp_path / "drift_status.json").write_text(json.dumps({"state": "정상"}))
+    assert "관측 모드" in sl._policy_block("sma_slow")
+
+
+def test_policy_critical_allows_change(tmp_path, monkeypatch):
+    """드리프트 CRITICAL이면 관측 모드 해제 (적응 허용)."""
+    import json, time
+    import src.self_learn as sl
+    monkeypatch.setattr(sl, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(sl, "HISTORY_CSV", tmp_path / "h.csv")
+    (tmp_path / "paper_state.json").write_text(json.dumps({"epoch_start": int(time.time()) - 10*86400}))
+    (tmp_path / "drift_status.json").write_text(json.dumps({"state": "CRITICAL"}))
+    assert sl._policy_block("sma_slow") == ""
+
+
+def test_policy_cooldown_after_two_changes(tmp_path, monkeypatch):
+    """직전 2회 연속 교체된 북은 쿨다운."""
+    import json, time
+    import pandas as pd
+    import src.self_learn as sl
+    monkeypatch.setattr(sl, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(sl, "HISTORY_CSV", tmp_path / "h.csv")
+    (tmp_path / "paper_state.json").write_text(json.dumps({"epoch_start": int(time.time()) - 200*86400}))
+    (tmp_path / "drift_status.json").write_text(json.dumps({"state": "정상"}))
+    pd.DataFrame([{"book": "b1", "action": "교체"}, {"book": "b1", "action": "교체"}]).to_csv(tmp_path / "h.csv", index=False)
+    assert "쿨다운" in sl._policy_block("b1")

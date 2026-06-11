@@ -114,6 +114,33 @@ def decide(grid_results: list, current_params: dict) -> dict:
             "reason": f"OOS {cur_oos:.2f}→{best['oos_sharpe']:.2f}, 고원 통과"}
 
 
+def _policy_block(book_name: str) -> str:
+    """교체를 막는 운영 정책 (외부 리뷰 반영). 차단 사유 문자열 또는 ''.
+
+    ① 관측 모드: 라이브 epoch 90일 미만 + 드리프트 비CRITICAL → 교체 금지 (관측 우선)
+    ② 쿨다운: 해당 북이 직전 2회 연속 교체됐으면 이번엔 강제 유지
+    """
+    import json, time
+    # ① 관측 모드
+    try:
+        state = json.loads((RESULTS_DIR / "paper_state.json").read_text())
+        live_days = (time.time() - state.get("epoch_start", 0)) / 86400
+        drift = json.loads((RESULTS_DIR / "drift_status.json").read_text()).get("state", "")
+        if live_days < 90 and drift != "CRITICAL":
+            return f"관측 모드 (라이브 {live_days:.0f}일 < 90일, 드리프트 비CRITICAL)"
+    except Exception:
+        pass
+    # ② 쿨다운
+    try:
+        hist = pd.read_csv(HISTORY_CSV)
+        recent = hist[hist["book"] == book_name].tail(2)
+        if len(recent) == 2 and (recent["action"] == "교체").all():
+            return "쿨다운 (직전 2회 연속 교체)"
+    except Exception:
+        pass
+    return ""
+
+
 def self_learn() -> list:
     """전체 자가학습 1회 실행. 변경 시 config.yaml books 갱신."""
     cfg = load_config()
@@ -133,6 +160,10 @@ def self_learn() -> list:
         current_params = {k: book[k] for k in param_keys}
         grid = evaluate_family(df, family, book, fee, slip, wf_cfg)
         d = decide(grid, current_params)
+        block = _policy_block(name)
+        if d["action"] == "교체" and block:
+            d = {"action": "유지", "chosen": current_params,
+                 "reason": f"{block} — 후보({d['chosen']}) 보류"}
         d.update(book=name, date=time.strftime("%Y-%m-%d"))
         decisions.append(d)
         if d["action"] == "교체":
