@@ -19,7 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-CYCLE_SEC = 3600  # 1시간 (1d 전략이라 충분)
+# 2단 루프: 고속 리스크 틱(스탑/킬스위치 실시간) + 신호 사이클(진입/청산 판단)
+FAST_TICK_SEC = 60
+SIGNAL_INTERVAL_SEC = 900
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOG_DIR / "runner.log"
@@ -68,19 +70,29 @@ def one_cycle(last_reval_date, last_drift_date):
 
 def main():
     once = "--once" in sys.argv
-    log(f"러너 시작 (간격 {CYCLE_SEC}s{', 1회 모드' if once else ''})")
+    log(f"러너 시작 (리스크틱 {FAST_TICK_SEC}s / 신호 {SIGNAL_INTERVAL_SEC}s{', 1회 모드' if once else ''})")
     last_reval, last_drift = None, None
+    last_signal = 0.0
     while True:
         try:
-            last_reval, last_drift = one_cycle(last_reval, last_drift)
+            # 고속 리스크 틱 (매분): 실시간 스탑/트레일링/킬스위치
+            from src.paper_trader import fast_risk_check
+            fr = fast_risk_check()
+            for ev in fr["events"]:
+                log(f"⚡ 리스크 이벤트: {ev}")
+
+            # 신호 사이클 (15분): 캔들 갱신 + 진입/청산 + 일일/주간/월간 작업
+            if time.time() - last_signal >= SIGNAL_INTERVAL_SEC:
+                last_reval, last_drift = one_cycle(last_reval, last_drift)
+                last_signal = time.time()
         except KeyboardInterrupt:
             log("수동 종료")
             break
         except Exception:
-            log("에러 (다음 사이클에 재시도):\n" + traceback.format_exc())
+            log("에러 (다음 틱에 재시도):\n" + traceback.format_exc())
         if once:
             break
-        time.sleep(CYCLE_SEC)
+        time.sleep(FAST_TICK_SEC)
 
 
 if __name__ == "__main__":

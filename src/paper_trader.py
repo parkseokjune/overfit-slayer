@@ -55,7 +55,9 @@ def make_testnet_exchange():
 
 def _fresh_book(weight: float) -> dict:
     return {"balance": INITIAL_BALANCE * weight, "position": 0,
-            "entry_price": None, "qty": 0.0}
+            "entry_price": None, "qty": 0.0,
+            "extreme": None,        # 보유 중 최고가(롱)/최저가(숏) — 트레일링용
+            "blocked_sign": 0}      # 고속루프 스탑아웃 후 재진입 금지 방향
 
 
 def load_state() -> dict:
@@ -151,6 +153,44 @@ FUTURES_SYMBOL = "BTC/USDT:USDT"  # binanceusdm 무기한 unified 심볼
 MIN_NOTIONAL = 100  # Binance BTCUSDT 선물 최소 주문 명목가 (USDT)
 
 
+def _execute_with_maker(ex, fsym: str, side: str, amount: float, ref_price: float,
+                        urgent: bool = False) -> dict:
+    """지정가(post-only) 우선 집행 — taker 0.045% 대신 maker 리베이트.
+
+    urgent(스탑 청산 등)는 즉시 시장가. 일반 신호 주문은 호가 근처 지정가를 걸고
+    maker_wait_sec 대기, 미체결분은 시장가 폴백 (체결 확실성 보장).
+    """
+    if urgent:
+        return ex.create_order(fsym, "market", side, amount)
+    cfg = load_config().get("execution", {})
+    wait = cfg.get("maker_wait_sec", 90)
+    off = cfg.get("maker_offset_bps", 1) / 10_000
+    limit_price = ref_price * (1 - off) if side == "buy" else ref_price * (1 + off)
+    limit_price = float(ex.price_to_precision(fsym, limit_price))
+    try:
+        order = ex.create_order(fsym, "limit", side, amount, limit_price,
+                                params={"timeInForce": "GTX"})  # post-only
+    except Exception:
+        return ex.create_order(fsym, "market", side, amount)  # GTX 즉시체결거부 등 → 폴백
+
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        time.sleep(5)
+        order = ex.fetch_order(order["id"], fsym)
+        if order["status"] == "closed":
+            return order
+    # 타임아웃: 잔량 취소 후 시장가 폴백
+    try:
+        ex.cancel_order(order["id"], fsym)
+    except Exception:
+        pass
+    order = ex.fetch_order(order["id"], fsym)
+    remaining = float(order.get("remaining") or 0)
+    if remaining > 0:
+        ex.create_order(fsym, "market", side, remaining)
+    return order
+
+
 def execute_testnet(ex, state: dict, target: float, symbol: str,
                     price: float, leverage: int, book: str = "") -> dict:
     """테스트넷 실주문 — 북별 가상 잔고 비례 수량을 시장가로 체결.
@@ -174,7 +214,7 @@ def execute_testnet(ex, state: dict, target: float, symbol: str,
     if amount <= 0:
         return state
     side = "buy" if delta > 0 else "sell"
-    order = ex.create_order(fsym, "market", side, amount)
+    order = _execute_with_maker(ex, fsym, side, amount, price, urgent=(target == 0))
     fill = float(order.get("average") or price)
     record_trade({"ts": int(time.time()), "mode": "testnet", "book": book,
                   "side": side, "position": target, "price": fill,
@@ -183,6 +223,72 @@ def execute_testnet(ex, state: dict, target: float, symbol: str,
     state.update(position=target, entry_price=fill if target != 0 else None,
                  qty=abs(target_qty) if target != 0 else 0.0)
     return state
+
+
+def fetch_live_price(ex=None) -> float:
+    """실시간 가격 (테스트넷 ex 있으면 거기서, 없으면 공개 현물 시세)."""
+    if ex:
+        return float(ex.fetch_ticker(FUTURES_SYMBOL)["last"])
+    import ccxt
+    pub = ccxt.binance({"enableRateLimit": True})
+    return float(pub.fetch_ticker("BTC/USDT")["last"])
+
+
+def fast_risk_check() -> dict:
+    """고속 리스크 루프 (매분) — 실시간 가격으로 스탑/트레일링/킬스위치 즉시 집행.
+
+    백테스트는 캔들 내 저가/고가에서 스탑이 발동된다고 가정한다.
+    이 루프가 그 가정을 라이브에서 실현한다 (시간봉 마감 대기 없이 즉시 청산).
+    """
+    state = load_state()
+    ex = make_testnet_exchange()
+    price = fetch_live_price(ex)
+    books = get_books()
+    events = []
+
+    for name, bcfg in books.items():
+        book = state["books"].get(name)
+        if not book or book["position"] == 0 or not book["entry_price"]:
+            continue
+        direction = 1 if book["position"] > 0 else -1
+        entry = book["entry_price"]
+        # 극값 갱신 (트레일링 기준점)
+        ext = book.get("extreme") or entry
+        ext = max(ext, price) if direction > 0 else min(ext, price)
+        book["extreme"] = ext
+
+        sl, tr = bcfg["stop_loss"], bcfg["trailing"]
+        loss = (price / entry - 1) * direction
+        pullback = (price / ext - 1) * direction  # 극값 대비 후퇴 (항상 ≤0)
+        stop_hit = sl and loss <= -sl
+        trail_hit = tr and pullback <= -tr
+
+        if stop_hit or trail_hit:
+            reason = "손절" if stop_hit else "트레일링"
+            if ex:
+                execute_testnet(ex, book, 0, "BTC/USDT", price, bcfg["leverage"], book=name)
+            else:
+                execute_dry_run(book, 0, price, bcfg["leverage"], book=name)
+            book["blocked_sign"] = direction  # 원시 신호 리셋/반전까지 재진입 금지
+            book["extreme"] = None
+            events.append(f"{name}: {reason} 청산 @ ${price:,.0f} (진입 ${entry:,.0f})")
+
+    state["equity"] = round(sum(mark_to_market(b, price)
+                                for b in state["books"].values()), 2)
+    state["peak_equity"] = max(state.get("peak_equity", INITIAL_BALANCE), state["equity"])
+    if not state.get("halted") and state["equity"] < state["peak_equity"] * (1 - KILL_SWITCH_DD):
+        state["halted"] = True
+        events.append(f"KILL-SWITCH 발동 (고점 ${state['peak_equity']:,.0f} 대비 -{KILL_SWITCH_DD*100:.0f}%)")
+        for name, bcfg in books.items():
+            book = state["books"].get(name)
+            if book and book["position"] != 0:
+                if ex:
+                    execute_testnet(ex, book, 0, "BTC/USDT", price, bcfg["leverage"], book=name)
+                else:
+                    execute_dry_run(book, 0, price, bcfg["leverage"], book=name)
+    save_state(state)
+    return {"price": price, "equity": state["equity"], "events": events,
+            "halted": state.get("halted", False)}
 
 
 def run_once() -> dict:
@@ -200,6 +306,12 @@ def run_once() -> dict:
         target, price = info["target"], info["price"]
         if halted:
             target = 0  # 킬스위치 발동 중: 청산만 허용
+        # 고속루프 스탑아웃 후 재진입 블록: 같은 방향 재진입은 원시 신호 리셋/반전까지 금지
+        blocked = book.get("blocked_sign", 0)
+        if blocked and target != 0 and (1 if target > 0 else -1) == blocked:
+            target = 0
+        elif blocked:
+            book["blocked_sign"] = 0  # 신호가 0이 되거나 반전 → 블록 해제
         if target != book["position"]:
             if ex:
                 # 테스트넷: 북별 증거금 비례 수량으로 주문 (심볼 단일이라 순노출 합산됨)
@@ -207,6 +319,8 @@ def run_once() -> dict:
                                 bcfg["leverage"], book=name)
             else:
                 execute_dry_run(book, target, price, bcfg["leverage"], book=name)
+            if book["position"] != 0:
+                book["extreme"] = book["entry_price"]  # 트레일링 기준점 초기화
             actions[name] = f"→ {target}"
         else:
             actions[name] = f"유지({book['position']})"
