@@ -115,19 +115,26 @@ def decide(grid_results: list, current_params: dict) -> dict:
 
 
 def _policy_block(book_name: str) -> str:
-    """교체를 막는 운영 정책 (외부 리뷰 반영). 차단 사유 문자열 또는 ''.
+    """교체를 막는 운영 정책 (운영 규칙서 docs/OPERATIONS.md). 차단 사유 또는 ''.
 
-    ① 관측 모드: 라이브 epoch 90일 미만 + 드리프트 비CRITICAL → 교체 금지 (관측 우선)
-    ② 쿨다운: 해당 북이 직전 2회 연속 교체됐으면 이번엔 강제 유지
+    A규칙(무조건 유지): ① 라이브 90일 미만+비CRITICAL ② 90일 이후라도 드리프트 정상
+    ③ 체결/잔고 이상 ④ 쿨다운(직전 2회 연속 교체)
+    B규칙(제한적 교체): 90일+ & 드리프트 WARNING(마진 0.15)/CRITICAL(마진 0.05) & 기존 가드레일
     """
     import json, time
-    # ① 관측 모드
     try:
         state = json.loads((RESULTS_DIR / "paper_state.json").read_text())
+        # ③ 체결/잔고 이상 — 운영 리스크 우선 (어느 단계든 차단)
+        if state.get("recon_block") or state.get("halted"):
+            return "체결/잔고 이상 또는 중단 상태 — 운영 리스크 우선, 학습 보류"
         live_days = (time.time() - state.get("epoch_start", 0)) / 86400
         drift = json.loads((RESULTS_DIR / "drift_status.json").read_text()).get("state", "")
+        # ① 관측 모드
         if live_days < 90 and drift != "CRITICAL":
             return f"관측 모드 (라이브 {live_days:.0f}일 < 90일, 드리프트 비CRITICAL)"
+        # ② 90일 이후에도 드리프트 정상이면 보수 유지 (평상시엔 바꾸지 않음)
+        if live_days >= 90 and drift not in ("WARNING", "CRITICAL"):
+            return "안정 상태 (드리프트 정상) — 보수 유지, 교체는 WARNING 이상에서만"
     except Exception:
         pass
     # ② 쿨다운

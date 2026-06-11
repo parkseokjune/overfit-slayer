@@ -98,3 +98,26 @@ def test_policy_cooldown_after_two_changes(tmp_path, monkeypatch):
     (tmp_path / "drift_status.json").write_text(json.dumps({"state": "정상"}))
     pd.DataFrame([{"book": "b1", "action": "교체"}, {"book": "b1", "action": "교체"}]).to_csv(tmp_path / "h.csv", index=False)
     assert "쿨다운" in sl._policy_block("b1")
+
+
+def test_policy_stable_drift_blocks_after_90d(tmp_path, monkeypatch):
+    """90일 지나도 드리프트 정상이면 보수 유지 (평상시 교체 금지)."""
+    import json, time
+    import src.self_learn as sl
+    monkeypatch.setattr(sl, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(sl, "HISTORY_CSV", tmp_path / "h.csv")
+    (tmp_path / "paper_state.json").write_text(json.dumps({"epoch_start": int(time.time()) - 120*86400}))
+    (tmp_path / "drift_status.json").write_text(json.dumps({"state": "정상"}))
+    assert "안정 상태" in sl._policy_block("b1")
+
+
+def test_policy_recon_block_blocks_learning(tmp_path, monkeypatch):
+    """체결/잔고 이상(recon_block) 시 학습 보류 — 운영 리스크 우선."""
+    import json, time
+    import src.self_learn as sl
+    monkeypatch.setattr(sl, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(sl, "HISTORY_CSV", tmp_path / "h.csv")
+    (tmp_path / "paper_state.json").write_text(json.dumps(
+        {"epoch_start": int(time.time()) - 120*86400, "recon_block": True}))
+    (tmp_path / "drift_status.json").write_text(json.dumps({"state": "CRITICAL"}))
+    assert "운영 리스크" in sl._policy_block("b1")
