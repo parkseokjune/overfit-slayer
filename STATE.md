@@ -43,12 +43,11 @@
 (아직 없음)
 
 ## 사용자 입력 대기 항목
-- [ ] `ANTHROPIC_API_KEY` — Phase 4 진입 전 필요 (.env에 추가)
-- [ ] `BINANCE_TESTNET_KEY` / `BINANCE_TESTNET_SECRET` — Phase 6 진입 전 필요
-  - 발급: https://testnet.binance.vision 에서 GitHub 로그인 후 키 생성 (무료, 가짜 돈)
+- [x] `BINANCE_TESTNET_KEY/SECRET` — ✅ 입력 완료 (demo.binance.com 키, 2026-06-11 검증 통과)
+- [ ] `ANTHROPIC_API_KEY` — 선택사항 (LLM 레짐 분류용, 현재 규칙 기반으로 대체 운용 중)
 
 ## 메모
-(없음)
+- 키 발급은 반드시 **demo.binance.com** (구 테스트넷 2종은 폐쇄/비호환 — DEPLOY 가이드 참조)
 
 ## 업그레이드 백로그 (전문가 자체평가 기반, 2026-06-11 수립 — 우선순위순)
 1. **데이터 품질 감사**: 4h 갭 8개 치유, 이종거래소(Bybit) 교차검증, 배드틱 탐지 ← 진행 중
