@@ -59,6 +59,9 @@ def one_cycle(last_reval_date, last_drift_date):
     marker = ROOT / "results" / ".last_self_learn"
     already = marker.exists() and marker.read_text() == str(today.date())
     if learn_due and not already:
+        from src.monthly_check import save_report
+        verdict = save_report()
+        log(f"월간 생존 점검: {verdict} (results/monthly_report_*.json)")
         from src.self_learn import self_learn
         for d in self_learn():
             log(f"자가학습 [{d['book']}] {d['action']}: {d['reason']}")

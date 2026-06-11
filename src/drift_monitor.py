@@ -126,6 +126,15 @@ def drift_check() -> dict:
 
     DRIFT_FILE.parent.mkdir(exist_ok=True)
     DRIFT_FILE.write_text(json.dumps(status, ensure_ascii=False, indent=2))
+    # 이력 누적 — 월간 점검("최근 30일 CRITICAL 반복")의 근거 데이터
+    import time as _t
+    hist = RESULTS_DIR / "drift_history.csv"
+    line = f"{int(_t.time())},{status.get('live_days',0)},{status.get('backtest_percentile','')},{status.get('state','')}\n"
+    if not hist.exists():
+        hist.write_text("ts,live_days,percentile,state\n" + line)
+    else:
+        with open(hist, "a") as f:
+            f.write(line)
     return status
 
 
