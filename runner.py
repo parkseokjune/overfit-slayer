@@ -50,6 +50,19 @@ def one_cycle(last_reval_date, last_drift_date):
         row = revalidate()
         log(f"주간 재검증: {json.dumps(row, ensure_ascii=False)}")
         last_reval_date = today.date()
+
+    # 자가학습: 매월 1일 또는 드리프트/재검증 ALERT 발생 시
+    alert = (ROOT / "results" / "ALERT.txt")
+    learn_due = today.day == 1 or alert.exists()
+    marker = ROOT / "results" / ".last_self_learn"
+    already = marker.exists() and marker.read_text() == str(today.date())
+    if learn_due and not already:
+        from src.self_learn import self_learn
+        for d in self_learn():
+            log(f"자가학습 [{d['book']}] {d['action']}: {d['reason']}")
+        marker.write_text(str(today.date()))
+        if alert.exists():
+            alert.rename(alert.with_suffix(".handled"))  # 처리된 경고 보관
     return last_reval_date, last_drift_date
 
 

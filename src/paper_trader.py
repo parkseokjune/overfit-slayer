@@ -28,19 +28,12 @@ load_dotenv(ROOT / ".env")
 STATE_FILE = RESULTS_DIR / "paper_state.json"
 TRADES_CSV = RESULTS_DIR / "paper_trades.csv"
 
-# 채택: 9년 풀히스토리 생존자 듀얼 (STATE.md, 2026-06-11 교체)
-# 직전 채택(sma20/150+rsi)은 2024-26 과적합으로 판명(9y -27%) → 전 레짐 생존자로 교체
-# 9y: +153%, CAGR 11.1%, Sharpe 0.47, MDD -51%, 9년 중 8년 양수 (상관 0.09)
-BOOKS = {
-    "sma_slow": {"weight": 0.5, "timeframe": "1d", "leverage": 2,
-                 "strategy": "sma_cross", "fast": 10, "slow": 200,
-                 "stop_loss": 0.04, "trailing": 0.08, "regime_filter": False,
-                 "vol_target": 0.40},  # 스탑고원 재검증: (4%,8%)이 Sharpe 0.92/MDD -30%
-    "supertrend": {"weight": 0.5, "timeframe": "1d", "leverage": 2,
-                   "strategy": "supertrend", "period": 14, "multiplier": 1.5,
-                   "stop_loss": 0.04, "trailing": 0.08, "regime_filter": False,
-                   "vol_target": 0.40},  # mult 1.5 열이 전 period 견고 (OOS 0.56~0.70)
-}
+# 운용 북은 config.yaml의 books 섹션에서 로드 — 자가학습(self_learn)이 자동 갱신
+def get_books() -> dict:
+    return load_config().get("books", {})
+
+
+BOOKS = get_books()  # 모듈 로드 시점 스냅샷 (run_once는 매번 재로드)
 VOL_STEP = 0.25  # 분수 포지션 계단화 (리밸런스 churn 축소)
 INITIAL_BALANCE = 5_000.0  # 데모 계좌 실잔고에 맞춤 (2026-06-11)
 KILL_SWITCH_DD = 0.15  # 자산 고점 대비 -15% → 전 포지션 청산 후 거래 중단 (수동 해제)
@@ -72,7 +65,7 @@ def load_state() -> dict:
             return state
     # 신규 또는 구버전(단일 북) → 듀얼 북으로 초기화
     return {"mode": None, "cycles": 0,
-            "books": {name: _fresh_book(b["weight"]) for name, b in BOOKS.items()}}
+            "books": {name: _fresh_book(b["weight"]) for name, b in get_books().items()}}
 
 
 def save_state(state: dict):
@@ -92,7 +85,7 @@ def record_trade(row: dict):
 
 def compute_target_signal(symbol: str, book_name: str) -> dict:
     """최신 데이터로 해당 북 전략의 목표 포지션(-1/0/1) 계산."""
-    b = BOOKS[book_name]
+    b = get_books()[book_name]
     df = fetch_data(symbol, b["timeframe"])
     if b["strategy"] == "sma_cross":
         raw = SmaCross(fast=b["fast"], slow=b["slow"]).generate_signals(df)
@@ -201,8 +194,8 @@ def run_once() -> dict:
 
     actions, price = {}, None
     halted = state.get("halted", False)
-    for name, bcfg in BOOKS.items():
-        book = state["books"][name]
+    for name, bcfg in get_books().items():
+        book = state["books"].setdefault(name, _fresh_book(bcfg["weight"]))
         info = compute_target_signal(symbol, name)
         target, price = info["target"], info["price"]
         if halted:
