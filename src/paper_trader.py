@@ -95,6 +95,15 @@ def reconcile(ex, state: dict, price: float) -> dict:
     for p in ex.fetch_positions([FUTURES_SYMBOL]):
         if p.get("contracts"):
             exch_qty += float(p["contracts"]) * (1 if p["side"] == "long" else -1)
+    # 잔고 0 감지: 인증은 되는데 증거금이 비어있으면 주문이 전부 실패 — 진입 차단
+    usdt = fetch_futures_usdt(ex)
+    if usdt <= 0:
+        state["recon"] = "EMPTY_BALANCE"
+        state["recon_block"] = True
+        (RESULTS_DIR / "ALERT.txt").write_text(
+            "데모 선물 지갑 USDT 잔고 0 — 데모 리셋/지갑 이체 필요. 신규 진입 차단됨.\n")
+        return state
+
     diff_notional = abs(local_qty - exch_qty) * price
     if diff_notional > MIN_NOTIONAL:  # 최소주문 단위 이상 어긋나면 진짜 불일치
         state["recon"] = f"MISMATCH local={local_qty:.4f} exch={exch_qty:.4f}"
@@ -256,6 +265,24 @@ def execute_testnet(ex, state: dict, target: float, symbol: str,
     state.update(position=target, entry_price=fill if target != 0 else None,
                  qty=abs(target_qty) if target != 0 else 0.0)
     return state
+
+
+def fetch_futures_usdt(ex) -> float:
+    """선물 지갑 USDT 잔고 — 데모 서버의 account 엔드포인트 고장 대응.
+
+    fetch_balance(→ /fapi/v*/account)가 데모에서 0을 반환하는 버그가 있어
+    정상 동작하는 /fapi/v3/balance를 직접 사용한다 (2026-06-11 확인).
+    """
+    try:
+        for row in ex.fapiPrivateV3GetBalance():
+            if row.get("asset") == "USDT":
+                return float(row.get("balance") or 0)
+    except Exception:
+        pass
+    try:
+        return float(ex.fetch_balance().get("USDT", {}).get("total") or 0)
+    except Exception:
+        return 0.0
 
 
 def fetch_live_price(ex=None) -> float:

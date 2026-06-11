@@ -28,9 +28,9 @@ def main():
     m = ex.market(FUTURES_SYMBOL)
     print(f"✅ 마켓 확인: {FUTURES_SYMBOL} (id={m['id']}, 최소수량 {m['limits']['amount']['min']})")
 
-    bal = ex.fetch_balance()
-    usdt = bal.get("USDT", {})
-    print(f"✅ 잔고: {usdt.get('total', 0):,.2f} USDT (가용 {usdt.get('free', 0):,.2f})")
+    from .paper_trader import fetch_futures_usdt
+    usdt = fetch_futures_usdt(ex)
+    print(f"{'✅' if usdt > 0 else '⚠'} 잔고: {usdt:,.2f} USDT" + (" — 0이면 데모 지갑 충전/리셋 필요" if usdt <= 0 else ""))
 
     positions = ex.fetch_positions([FUTURES_SYMBOL])
     open_pos = [p for p in positions if float(p.get("contracts") or 0) != 0]

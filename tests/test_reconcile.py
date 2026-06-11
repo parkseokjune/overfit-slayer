@@ -5,8 +5,11 @@ import src.paper_trader as pt
 
 
 class FakeEx:
-    def __init__(self, qty):  # qty: 거래소 순포지션 (BTC, 부호 포함)
+    def __init__(self, qty, usdt=5000.0):  # qty: 거래소 순포지션 (BTC, 부호 포함)
         self.qty = qty
+        self.usdt = usdt
+    def fapiPrivateV3GetBalance(self):
+        return [{"asset": "USDT", "balance": str(self.usdt)}]
     def fetch_positions(self, syms):
         if self.qty == 0:
             return []
@@ -42,3 +45,11 @@ def test_atomic_save(tmp_path, monkeypatch):
     pt.save_state({"a": 1})
     assert json.loads((tmp_path / "s.json").read_text()) == {"a": 1}
     assert not (tmp_path / "s.tmp").exists()
+
+
+def test_empty_balance_blocks(tmp_path, monkeypatch):
+    """인증돼도 선물지갑 USDT 0이면 진입 차단 + ALERT."""
+    monkeypatch.setattr(pt, "RESULTS_DIR", tmp_path)
+    s = pt.reconcile(FakeEx(0.0, usdt=0.0), state_with(0, 0.0), 60_000)
+    assert s["recon_block"] is True
+    assert "EMPTY" in s["recon"]
