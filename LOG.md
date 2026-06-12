@@ -1,5 +1,16 @@
 # LOG.md — 이터레이션 기록 (최신이 위)
 
+## [2026-06-11 19:50] Iteration 35 — 보강 설계서 구현 (5/6건, #3은 설계대로 측정 후 조건부)
+- #1 체결 품질 원장: ref_price/slippage_bps/order_type(maker·fallback·market)/wait_sec 기록
+  + src/exec_quality.py 30일 집계 (기준: 평균슬립<10bps, maker율>50%)
+- #2 데드맨 스위치: 러너 하트비트(매 틱) + scripts/watchdog.sh (별도 프로세스, 5분 정체 시
+  알림→재기동 3회→수동개입 마킹). 워치독 가동 시작
+- #5 알림 추상화: src/notify.py 단일 진입점 (파일+로그 기본, TELEGRAM_* 환경변수 시 푸시 0줄 활성화)
+  — 킬스위치/비상밴드/recon/잔고0/드리프트경고/체결/복구에 연결
+- #4 설정 거버넌스: 교체 시 config 스냅샷 + git_rev 기록, --rollback 명령
+- #6 복구 모드: src/recover.py 대화형 (거래소채택/전량청산/사유기록) — recon_block 해제 유일 경로
+- pytest 78 passed, 러너+워치독 재시작
+
 ## [2026-06-11 19:10] Iteration 34 — 월간 운영 체크리스트 채택·자동화
 - 갭 발견·해소: 드리프트가 최신 상태만 저장 → drift_history.csv 누적 추가 ("30일 내 CRITICAL" 판정 근거)
 - src/monthly_check.py: 5부문 자동 점검 (무결성/체결/성과/포트폴리오/학습판단)

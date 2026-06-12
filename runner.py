@@ -78,6 +78,10 @@ def main():
     last_signal = 0.0
     while True:
         try:
+            # 하트비트 (데드맨 스위치용 — scripts/watchdog.sh가 감시)
+            hb = ROOT / "results" / "heartbeat.txt"
+            hb.parent.mkdir(exist_ok=True)
+            hb.write_text(str(int(time.time())))
             # 고속 리스크 틱 (매분): 실시간 스탑/트레일링/킬스위치
             from src.paper_trader import fast_risk_check
             fr = fast_risk_check()

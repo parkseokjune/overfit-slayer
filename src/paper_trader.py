@@ -100,6 +100,8 @@ def reconcile(ex, state: dict, price: float) -> dict:
         state["recon_block"] = True
         (RESULTS_DIR / "ALERT.txt").write_text(
             "데모 선물 지갑 USDT 잔고 0 — 데모 리셋/지갑 이체 필요. 신규 진입 차단됨.\n")
+        from .notify import notify
+        notify("CRITICAL", "선물 지갑 잔고 0 — 진입 차단")
         return state
 
     diff_notional = abs(local_qty - exch_qty) * price
@@ -109,6 +111,8 @@ def reconcile(ex, state: dict, price: float) -> dict:
         (RESULTS_DIR / "ALERT.txt").write_text(
             f"포지션 불일치: 장부 {local_qty:.4f} vs 거래소 {exch_qty:.4f} BTC "
             f"(명목 ${diff_notional:,.0f}) — 수동 확인 필요. 신규 진입 차단됨.\n")
+        from .notify import notify
+        notify("CRITICAL", f"포지션 불일치 — 진입 차단 (장부 {local_qty:.4f} vs 거래소 {exch_qty:.4f})")
     else:
         state["recon"] = "ok"
         state["recon_block"] = False
@@ -204,7 +208,9 @@ def _execute_with_maker(ex, fsym: str, side: str, amount: float, ref_price: floa
     maker_wait_sec 대기, 미체결분은 시장가 폴백 (체결 확실성 보장).
     """
     if urgent:
-        return ex.create_order(fsym, "market", side, amount)
+        o = ex.create_order(fsym, "market", side, amount)
+        o["_order_type"], o["_wait_sec"] = "market", 0
+        return o
     cfg = load_config().get("execution", {})
     wait = cfg.get("maker_wait_sec", 90)
     off = cfg.get("maker_offset_bps", 1) / 10_000
@@ -214,13 +220,17 @@ def _execute_with_maker(ex, fsym: str, side: str, amount: float, ref_price: floa
         order = ex.create_order(fsym, "limit", side, amount, limit_price,
                                 params={"timeInForce": "GTX"})  # post-only
     except Exception:
-        return ex.create_order(fsym, "market", side, amount)  # GTX 즉시체결거부 등 → 폴백
+        o = ex.create_order(fsym, "market", side, amount)  # GTX 즉시체결거부 등 → 폴백
+        o["_order_type"], o["_wait_sec"] = "market_fallback", 0
+        return o
 
-    deadline = time.time() + wait
+    t0 = time.time()
+    deadline = t0 + wait
     while time.time() < deadline:
         time.sleep(5)
         order = ex.fetch_order(order["id"], fsym)
         if order["status"] == "closed":
+            order["_order_type"], order["_wait_sec"] = "maker", round(time.time() - t0)
             return order
     # 타임아웃: 잔량 취소 후 시장가 폴백
     try:
@@ -231,6 +241,10 @@ def _execute_with_maker(ex, fsym: str, side: str, amount: float, ref_price: floa
     remaining = float(order.get("remaining") or 0)
     if remaining > 0:
         ex.create_order(fsym, "market", side, remaining)
+        order["_order_type"] = "market_fallback"
+    else:
+        order["_order_type"] = "maker"
+    order["_wait_sec"] = round(time.time() - t0)
     return order
 
 
@@ -259,10 +273,18 @@ def execute_testnet(ex, state: dict, target: float, symbol: str,
     side = "buy" if delta > 0 else "sell"
     order = _execute_with_maker(ex, fsym, side, amount, price, urgent=(target == 0))
     fill = float(order.get("average") or price)
+    direction = 1 if side == "buy" else -1
+    slippage_bps = (fill / price - 1) * direction * 10_000  # 기준가 대비 불리 +
     record_trade({"ts": int(time.time()), "mode": "testnet", "book": book,
                   "side": side, "position": target, "price": fill,
                   "qty": amount, "pnl": "",
-                  "balance": round(state["balance"], 2)})
+                  "balance": round(state["balance"], 2),
+                  "ref_price": price, "slippage_bps": round(slippage_bps, 2),
+                  "order_type": order.get("_order_type", "?"),
+                  "wait_sec": order.get("_wait_sec", "")})
+    from .notify import notify
+    notify("TRADE", f"{book} {side} {amount} BTC @ ${fill:,.0f} "
+                    f"({order.get('_order_type','?')}, slip {slippage_bps:+.1f}bps)")
     state.update(position=target, entry_price=fill if target != 0 else None,
                  qty=abs(target_qty) if target != 0 else 0.0)
     return state
@@ -333,6 +355,8 @@ def fast_risk_check() -> dict:
             book["blocked_sign"] = direction
             book["extreme"] = None
             events.append(f"{name}: 비상밴드(-{emergency_loss*100:.0f}%) 청산 @ ${price:,.0f} (진입 ${entry:,.0f})")
+            from .notify import notify
+            notify("EMERGENCY", events[-1])
 
     state["equity"] = round(sum(mark_to_market(b, price)
                                 for b in state["books"].values()), 2)
@@ -340,6 +364,8 @@ def fast_risk_check() -> dict:
     if not state.get("halted") and state["equity"] < state["peak_equity"] * (1 - KILL_SWITCH_DD):
         state["halted"] = True
         events.append(f"KILL-SWITCH 발동 (고점 ${state['peak_equity']:,.0f} 대비 -{KILL_SWITCH_DD*100:.0f}%)")
+        from .notify import notify
+        notify("KILL_SWITCH", events[-1])
         for name, bcfg in books.items():
             book = state["books"].get(name)
             if book and book["position"] != 0:

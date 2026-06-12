@@ -119,6 +119,8 @@ def drift_check() -> dict:
         status["psr_vs_zero"] = round(probabilistic_sharpe_ratio(live, 0.0), 3)
 
     if status["state"] in ("WARNING", "CRITICAL"):
+        from .notify import notify
+        notify(status["state"], f"드리프트 {status['state']}: 라이브 분위 {pct:.1f}%")
         ALERT_FILE.write_text(
             f"드리프트 경고 [{status['state']}]: 라이브 {len(live)}일 누적 "
             f"{status['live_cum_return_pct']}% = 백테스트 분포의 {pct:.1f}분위.\n"

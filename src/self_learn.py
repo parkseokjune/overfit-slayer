@@ -177,18 +177,48 @@ def self_learn() -> list:
             book.update(d["chosen"])
             changed = True
 
+    snapshot = ""
     if changed:
+        # 거버넌스 (DESIGN_NEXT #4): 변경 전 설정 스냅샷 → 롤백 포인터
+        snap_dir = RESULTS_DIR / "config_snapshots"
+        snap_dir.mkdir(exist_ok=True, parents=True)
+        snapshot = str(snap_dir / f"config_{time.strftime('%Y%m%d_%H%M')}.yaml")
+        import shutil
+        shutil.copy(ROOT / "config.yaml", snapshot)
         with open(ROOT / "config.yaml", "w") as f:
             yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
 
     RESULTS_DIR.mkdir(exist_ok=True)
-    hist = pd.DataFrame([{**d, "chosen": str(d["chosen"])} for d in decisions])
+    try:
+        import subprocess
+        git_rev = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                                 capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception:
+        git_rev = ""
+    hist = pd.DataFrame([{**d, "chosen": str(d["chosen"]),
+                          "config_snapshot": snapshot, "git_rev": git_rev} for d in decisions])
     if HISTORY_CSV.exists():
         hist = pd.concat([pd.read_csv(HISTORY_CSV), hist], ignore_index=True)
     hist.to_csv(HISTORY_CSV, index=False)
     return decisions
 
 
+def rollback(snapshot_path: str):
+    """스냅샷으로 config 복원 (검증: yaml 파싱 + books 키 존재)."""
+    import shutil
+    cfg = yaml.safe_load(open(snapshot_path))
+    assert "books" in cfg and cfg["books"], "유효하지 않은 스냅샷 (books 없음)"
+    shutil.copy(snapshot_path, ROOT / "config.yaml")
+    from .notify import notify
+    notify("ROLLBACK", f"config을 {snapshot_path}로 복원")
+    return cfg["books"]
+
+
 if __name__ == "__main__":
-    for d in self_learn():
-        print(d)
+    import sys
+    if "--rollback" in sys.argv:
+        path = sys.argv[sys.argv.index("--rollback") + 1]
+        print("복원된 books:", list(rollback(path).keys()))
+    else:
+        for d in self_learn():
+            print(d)
