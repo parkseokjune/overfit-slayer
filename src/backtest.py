@@ -51,7 +51,7 @@ def run_backtest(df: pd.DataFrame, signals: pd.Series, timeframe: str,
     pos = signals.shift(1).fillna(0)
     if not allow_short:
         pos = pos.clip(lower=0)
-    pos = pos.to_numpy(dtype=float)
+    pos = pos.to_numpy(dtype=float, copy=True)  # pandas 3 CoW: 뷰는 읽기 전용
 
     funding_per_candle = funding_rate_8h * (TIMEFRAME_MS[timeframe] / 28_800_000)
 

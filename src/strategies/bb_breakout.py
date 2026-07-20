@@ -18,7 +18,7 @@ class BbBreakout(BaseStrategy):
         upper, mid, lower = bb.bollinger_hband(), bb.bollinger_mavg(), bb.bollinger_lband()
         close = df["close"].to_numpy()
         up, md, lo = upper.to_numpy(), mid.to_numpy(), lower.to_numpy()
-        out = pd.Series(0, index=df.index).to_numpy()
+        out = pd.Series(0, index=df.index).to_numpy(copy=True)  # pandas 3 CoW: 뷰는 읽기 전용
         position = 0
         for i in range(len(df)):
             if pd.isna(up[i]):

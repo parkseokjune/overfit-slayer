@@ -20,7 +20,7 @@ class RsiMeanRevert(BaseStrategy):
         sig = pd.Series(0, index=df.index)
         position = 0
         values = rsi.to_numpy()
-        out = sig.to_numpy()
+        out = sig.to_numpy(copy=True)  # pandas 3 CoW: 뷰는 읽기 전용
         for i, r in enumerate(values):
             if pd.isna(r):
                 position = 0
