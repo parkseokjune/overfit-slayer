@@ -78,6 +78,24 @@ def save_state(state: dict):
     os.replace(tmp, STATE_FILE)
 
 
+def flatten_sim_books(state: dict) -> list:
+    """dry_run→testnet 전환 첫 사이클: 시뮬 장부 포지션을 평탄화하고 목록 반환.
+
+    dry_run 포지션은 거래소에 실존하지 않는다. 그대로 두면 reconcile이
+    MISMATCH로 막아도 청산은 허용되므로, 유령 포지션의 '청산' 주문이 실제로
+    나가 거래소에 반대방향 신규 포지션이 생긴다 (2026-07-20 실발생:
+    장부 롱 0.0773 → 청산 매도가 테스트넷 신규 숏 0.0772로 체결).
+    거래소 실포지션이 있으면 직후 reconcile이 MISMATCH로 잡는다.
+    """
+    dropped = []
+    for name, book in state["books"].items():
+        if book["position"] != 0:
+            dropped.append(f"{name} {book['position']:+g} ({book['qty']:.4f} BTC)")
+            book.update(position=0, entry_price=None, qty=0.0,
+                        extreme=None, blocked_sign=0)
+    return dropped
+
+
 def reconcile(ex, state: dict, price: float) -> dict:
     """장부 vs 거래소 실포지션 대조 — 불일치 시 신규 진입 차단 + 경고.
 
@@ -107,7 +125,7 @@ def reconcile(ex, state: dict, price: float) -> dict:
     diff_notional = abs(local_qty - exch_qty) * price
     if diff_notional > MIN_NOTIONAL:  # 최소주문 단위 이상 어긋나면 진짜 불일치
         state["recon"] = f"MISMATCH local={local_qty:.4f} exch={exch_qty:.4f}"
-        state["recon_block"] = True  # 신규 진입 차단 (청산은 허용)
+        state["recon_block"] = True  # 신규 진입 차단 (청산은 reduceOnly 강제로만 허용)
         (RESULTS_DIR / "ALERT.txt").write_text(
             f"포지션 불일치: 장부 {local_qty:.4f} vs 거래소 {exch_qty:.4f} BTC "
             f"(명목 ${diff_notional:,.0f}) — 수동 확인 필요. 신규 진입 차단됨.\n")
@@ -201,14 +219,17 @@ MIN_NOTIONAL = 100  # Binance BTCUSDT 선물 최소 주문 명목가 (USDT)
 
 
 def _execute_with_maker(ex, fsym: str, side: str, amount: float, ref_price: float,
-                        urgent: bool = False) -> dict:
+                        urgent: bool = False, reduce_only: bool = False) -> dict:
     """지정가(post-only) 우선 집행 — taker 0.045% 대신 maker 리베이트.
 
     urgent(스탑 청산 등)는 즉시 시장가. 일반 신호 주문은 호가 근처 지정가를 걸고
     maker_wait_sec 대기, 미체결분은 시장가 폴백 (체결 확실성 보장).
+    reduce_only=True면 모든 주문에 reduceOnly 전달 — 포지션 축소만 가능,
+    거래소에 줄일 포지션이 없으면 거부됨 (유령 진입 구조적 차단).
     """
+    ro = {"reduceOnly": True} if reduce_only else {}
     if urgent:
-        o = ex.create_order(fsym, "market", side, amount)
+        o = ex.create_order(fsym, "market", side, amount, params=ro)
         o["_order_type"], o["_wait_sec"] = "market", 0
         return o
     cfg = load_config().get("execution", {})
@@ -218,9 +239,9 @@ def _execute_with_maker(ex, fsym: str, side: str, amount: float, ref_price: floa
     limit_price = float(ex.price_to_precision(fsym, limit_price))
     try:
         order = ex.create_order(fsym, "limit", side, amount, limit_price,
-                                params={"timeInForce": "GTX"})  # post-only
+                                params={"timeInForce": "GTX", **ro})  # post-only
     except Exception:
-        o = ex.create_order(fsym, "market", side, amount)  # GTX 즉시체결거부 등 → 폴백
+        o = ex.create_order(fsym, "market", side, amount, params=ro)  # GTX 즉시체결거부 등 → 폴백
         o["_order_type"], o["_wait_sec"] = "market_fallback", 0
         return o
 
@@ -240,7 +261,7 @@ def _execute_with_maker(ex, fsym: str, side: str, amount: float, ref_price: floa
     order = ex.fetch_order(order["id"], fsym)
     remaining = float(order.get("remaining") or 0)
     if remaining > 0:
-        ex.create_order(fsym, "market", side, remaining)
+        ex.create_order(fsym, "market", side, remaining, params=ro)
         order["_order_type"] = "market_fallback"
     else:
         order["_order_type"] = "maker"
@@ -249,11 +270,14 @@ def _execute_with_maker(ex, fsym: str, side: str, amount: float, ref_price: floa
 
 
 def execute_testnet(ex, state: dict, target: float, symbol: str,
-                    price: float, leverage: int, book: str = "") -> dict:
+                    price: float, leverage: int, book: str = "",
+                    reduce_only: bool = False) -> dict:
     """테스트넷 실주문 — 북별 가상 잔고 비례 수량을 시장가로 체결.
 
     심볼이 하나라 거래소 계정에는 북들의 순노출이 합산되어 잡힌다.
     북별 회계는 로컬 state로 유지하고, 거래소엔 델타만 반영한다.
+    reduce_only(recon 불일치 중 청산)는 거래소가 거부하면 장부를 건드리지
+    않고 그대로 반환 — 불일치 해소는 수동 확인에 맡긴다.
     """
     fsym = FUTURES_SYMBOL
     ex.load_markets()
@@ -271,7 +295,17 @@ def execute_testnet(ex, state: dict, target: float, symbol: str,
     if amount <= 0:
         return state
     side = "buy" if delta > 0 else "sell"
-    order = _execute_with_maker(ex, fsym, side, amount, price, urgent=(target == 0))
+    try:
+        order = _execute_with_maker(ex, fsym, side, amount, price,
+                                    urgent=(target == 0), reduce_only=reduce_only)
+    except Exception as e:
+        if reduce_only:
+            # 거래소에 줄일 포지션이 없어 거부됨 — 유령 진입이 구조적으로 차단된 것
+            from .notify import notify
+            notify("CRITICAL", f"{book} reduceOnly 청산 거부 ({e}) — "
+                               f"장부-거래소 불일치 수동 확인 필요")
+            return state
+        raise
     fill = float(order.get("average") or price)
     direction = 1 if side == "buy" else -1
     slippage_bps = (fill / price - 1) * direction * 10_000  # 기준가 대비 불리 +
@@ -383,11 +417,20 @@ def run_once() -> dict:
     symbol = cfg["market"]["symbol"]
     state = load_state()
     ex = make_testnet_exchange()
+    prev_mode = state.get("mode")
     state["mode"] = "testnet" if ex else "dry_run"
 
     actions, price = {}, None
     halted = state.get("halted", False)
     if ex:
+        # dry_run→testnet 전환 첫 사이클: 시뮬 장부는 거래소에 실존하지 않으므로
+        # reconcile 전에 평탄화 — 유령 포지션 '청산' 실주문 방지
+        if prev_mode == "dry_run":
+            dropped = flatten_sim_books(state)
+            if dropped:
+                actions["MODE_SWITCH"] = f"dry_run 장부 평탄화: {', '.join(dropped)}"
+                from .notify import notify
+                notify("WARNING", f"dry_run→testnet 전환 — 시뮬 포지션 리셋: {', '.join(dropped)}")
         state = reconcile(ex, state, fetch_live_price(ex))
         if state.get("recon_block"):
             halted = True  # 불일치 해소 전 신규 진입 차단
@@ -407,8 +450,10 @@ def run_once() -> dict:
         if target != book["position"]:
             if ex:
                 # 테스트넷: 북별 증거금 비례 수량으로 주문 (심볼 단일이라 순노출 합산됨)
+                # recon 불일치 중엔 reduceOnly 강제 — 청산이 유령 진입이 되는 것 차단
                 execute_testnet(ex, book, target, symbol, price,
-                                bcfg["leverage"], book=name)
+                                bcfg["leverage"], book=name,
+                                reduce_only=state.get("recon_block", False))
             else:
                 execute_dry_run(book, target, price, bcfg["leverage"], book=name)
             if book["position"] != 0:
